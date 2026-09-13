@@ -1,38 +1,10 @@
-// ==UserScript==
-// @name         Google Forms Universal AI Assistant HUD
-// @namespace    https://tampermonkey.net/
-// @version      6.5
-// @description  Full Google Forms AI Solver supporting all devices (Phone, iPhone, iPad, Tablet, PC) and all 12 question types with multi-provider AI (AnyModel, Groq, Mistral, OpenRouter, NaraRouter, Gemini) and zero token waste.
-// @author       Assistant
-// @match        *://docs.google.com/forms/*
-// @match        https://docs.google.com/forms/*
-// @match        *://docs.google.com/*
-// @match        https://docs.google.com/*
-// @match        *://forms.google.com/*
-// @match        https://forms.google.com/*
-// @match        *://forms.gle/*
-// @match        https://forms.gle/*
-// @include      *docs.google.com/forms*
-// @include      *forms.gle*
-// @include      *://docs.google.com/forms/*
-// @include      *://forms.gle/*
-// @include      https://docs.google.com/forms/*
-// @include      https://forms.gle/*
-// @connect      *
-// @connect      generativelanguage.googleapis.com
-// @connect      aistudio.google.com
-// @connect      anymodel.org
-// @connect      api.groq.com
-// @connect      api.mistral.ai
-// @connect      openrouter.ai
-// @connect      router.bynara.id
-// @run-at       document-idle
-// @grant        GM_getValue
-// @grant        GM_setValue
-// @grant        GM_registerMenuCommand
-// @grant        GM_xmlhttpRequest
-// @grant        unsafeWindow
-// ==/UserScript==
+/**
+ * Google Forms Universal AI Assistant HUD
+ * Chrome Extension (Manifest V3) Content Script
+ *
+ * Solves all 12 Google Form question types with multimodal vision analysis,
+ * intelligent reasoning, authentic human-like pacing, and demographic persona generation.
+ */
 
 (function () {
   'use strict';
@@ -268,15 +240,9 @@
 
 
 
-  // Safe storage helpers
+  // Safe storage helpers for Chrome Extension
   function getSafeValue(key, defVal = '') {
     try {
-      if (typeof GM_getValue === 'function') {
-        const gmVal = GM_getValue(key);
-        if (gmVal !== undefined && gmVal !== null && gmVal !== '') {
-          return gmVal;
-        }
-      }
       const localVal = localStorage.getItem('form_ai_' + key);
       if (localVal !== null && localVal !== undefined && localVal !== '') {
         return localVal;
@@ -289,9 +255,6 @@
 
   function setSafeValue(key, val) {
     try {
-      if (typeof GM_setValue === 'function') {
-        GM_setValue(key, val);
-      }
       localStorage.setItem('form_ai_' + key, val);
     } catch (e) {}
   }
@@ -1262,24 +1225,10 @@
     }
   }
 
-  // Safe HTTP request helper (uses GM_xmlhttpRequest, Chrome Extension background worker, or fallback fetch)
+  // Safe HTTP request helper (uses Chrome Extension background service worker or direct fetch fallback)
   function httpRequest(options) {
     return new Promise((resolve, reject) => {
-      // 1. Userscript environment with GM_xmlhttpRequest
-      if (typeof GM_xmlhttpRequest === 'function') {
-        try {
-          return GM_xmlhttpRequest({
-            ...options,
-            onload: resolve,
-            onerror: reject,
-            ontimeout: () => reject(new Error('Request timed out (30s)'))
-          });
-        } catch (e) {
-          console.warn('[Google Form AI HUD] GM_xmlhttpRequest failed:', e);
-        }
-      }
-
-      // 2. Chrome Extension (Manifest V3) environment with background service worker
+      // 1. Chrome Extension (Manifest V3) environment with background service worker
       if (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.sendMessage === 'function') {
         try {
           const fetchOpts = {
@@ -1315,7 +1264,7 @@
         }
       }
 
-      // 3. Fallback direct fetch
+      // 2. Fallback direct fetch
       doDirectFetch(options, resolve, reject);
     });
   }
@@ -4879,36 +4828,14 @@ Respond ONLY with valid JSON:
   window.addEventListener('keydown', keyHandler, true);
   document.addEventListener('keydown', keyHandler, true);
 
-  // Expose global helpers to both unsafeWindow (page DevTools console) and window (userscript sandbox)
-  const globalScope = typeof unsafeWindow !== 'undefined' ? unsafeWindow : (typeof window !== 'undefined' ? window : globalThis);
-  globalScope.__toggleFormAIHUD = toggleHUD;
-  globalScope.showFormAI = function () {
+  // Expose global helpers to window for console debugging and shortcuts
+  window.__toggleFormAIHUD = toggleHUD;
+  window.showFormAI = function () {
     isMinimized = false;
     mountHUD();
     updateHUDState();
     console.log('[Google Form AI HUD] showFormAI called: HUD is now open and visible.');
   };
-  if (typeof window !== 'undefined' && window !== globalScope) {
-    window.__toggleFormAIHUD = toggleHUD;
-    window.showFormAI = globalScope.showFormAI;
-  }
-
-  // Register interactive commands in Tampermonkey popup menu
-  if (typeof GM_registerMenuCommand === 'function') {
-    try {
-      GM_registerMenuCommand('⚡ Open / Toggle AI Assistant HUD', () => {
-        isMinimized = false;
-        mountHUD();
-        updateHUDState();
-        if (typeof globalScope.showFormAI === 'function') {
-          globalScope.showFormAI();
-        }
-      });
-      GM_registerMenuCommand('🔄 Scan & Solve Current Questions', () => {
-        processQuestions();
-      });
-    } catch (e) {}
-  }
 
   // Fallback: On first user tap/click anywhere, ensure HUD is mounted
   const firstTouchMount = () => {

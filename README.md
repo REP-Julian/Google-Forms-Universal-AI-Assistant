@@ -3,13 +3,13 @@
 [![Version](https://img.shields.io/badge/version-6.5.0-blue.svg)](https://github.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Manifest V3](https://img.shields.io/badge/Chrome%20Extension-Manifest%20V3-success.svg)](https://developer.chrome.com/docs/extensions/mv3/intro/)
-[![Userscript](https://img.shields.io/badge/Userscript-Tampermonkey%20%7C%20Violentmonkey-darkgreen.svg)](https://www.tampermonkey.net/)
-[![AI Provider](https://img.shields.io/badge/Primary%20AI-Google%20Gemini%20Native-blueviolet.svg)](https://aistudio.google.com/app/apikey)
+[![Load Unpacked](https://img.shields.io/badge/Installation-Load%20Unpacked-blueviolet.svg)](#-installation-guide-load-unpacked)
+[![AI Provider](https://img.shields.io/badge/Primary%20AI-Google%20Gemini%20Native-blue.svg)](https://aistudio.google.com/app/apikey)
 [![Zero Telemetry](https://img.shields.io/badge/Privacy-100%25%20Client--Side-brightgreen.svg)](#-privacy-and-security)
 
-An ultra-modern, cross-platform autonomous AI Assistant HUD engineered specifically for **Google Forms**. Solves all **12 Google Form question types** with multimodal vision analysis, intelligent reasoning, authentic human-like pacing, and demographic persona generation.
+An ultra-modern, autonomous AI Assistant HUD built exclusively as a **Chrome Extension (Manifest V3)** for **Google Forms**. Solves all **12 Google Form question types** with multimodal vision analysis, intelligent reasoning, authentic human-like pacing, and demographic persona generation.
 
-Works both as an **Unpacked Chrome Extension (Manifest V3)** and a **Userscript** for Tampermonkey / Violentmonkey on desktop and mobile browsers.
+Easily installed into any Chromium-based browser (**Google Chrome, Brave, Microsoft Edge, Opera, Arc, Vivaldi**) using **Load unpacked**.
 
 ---
 
@@ -27,20 +27,16 @@ The recommended primary provider is **Google Gemini Native**, which offers a **1
 
 ---
 
-### Step 2: Install the Assistant
+### Step 2: Install via "Load Unpacked"
 
-#### Option A: Chrome Extension (Recommended)
 1. Download or clone this repository to your computer.
-2. Open Chrome (or Brave, Edge, Opera, Arc) and go to `chrome://extensions/`.
-3. Toggle on **Developer mode** in the top-right corner.
-4. Click **Load unpacked** in the top-left corner.
+2. Open your browser and navigate to the Extensions page:
+   - **Chrome / Brave / Arc / Opera:** `chrome://extensions/`
+   - **Microsoft Edge:** `edge://extensions/`
+3. Toggle on **Developer mode** (top-right corner).
+4. Click the **Load unpacked** button (top-left corner).
 5. Select this project folder (`Google-Forms-Universal-AI-Assistant`).
-
-#### Option B: Userscript (Tampermonkey / Violentmonkey)
-1. Install [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/).
-2. Create a new script in your userscript manager dashboard.
-3. Copy the entire contents of [`google_form.user.js`](google_form.user.js) and paste it into the editor.
-4. Save the script (`Ctrl + S`).
+6. The extension is now installed and active!
 
 ---
 
@@ -148,27 +144,21 @@ When minimized, the floating trigger button can adjust its visibility to suit yo
 
 ---
 
-## 📱 Mobile Browser Support
+## 📱 Mobile & Tablet Support
 
-You can run this assistant on mobile devices and tablets:
+You can run this extension on mobile devices using **[Kiwi Browser](https://kiwibrowser.com/)** (Android), which natively supports Chrome desktop extensions:
 
-### Android
-1. Install **[Kiwi Browser](https://kiwibrowser.com/)** from the Google Play Store (supports desktop Chrome extensions).
-2. Install the **Tampermonkey** extension from the Chrome Web Store inside Kiwi.
-3. Add `google_form.user.js` to Tampermonkey.
+1. Install **Kiwi Browser** from the Google Play Store.
+2. Open Kiwi, go to `kiwi://extensions/` and enable **Developer mode**.
+3. Tap **+ (from .zip / .crx / folder)** and select this project folder.
 4. Open any Google Form — the touch-friendly floating ⚡ button and HUD will appear!
-
-### iOS & iPadOS
-1. Install **[Orion Browser](https://kagi.com/orion/)** from the App Store (supports Chrome & Firefox extensions).
-2. Install Tampermonkey in Orion and import `google_form.user.js`.
-3. Open any Google Form.
 
 ---
 
 ## 🔒 Privacy and Security
 
-- **Zero Data Collection:** This assistant does not collect, log, or transmit any user information, form responses, or browsing history to any tracking or telemetry server.
-- **Local Sandbox Storage:** All API keys, settings, and persona choices are stored strictly in your browser's private local storage (`localStorage` / `GM_setValue`).
+- **Zero Data Collection:** This extension does not collect, log, or transmit any user information, form responses, or browsing history to any tracking or telemetry server.
+- **Local Sandbox Storage:** All API keys, settings, and persona choices are stored strictly in your browser's private local storage (`localStorage`).
 - **Direct Provider Connection:** API calls travel directly from your browser to the respective provider endpoint (`generativelanguage.googleapis.com`, `api.groq.com`, etc.) via the Manifest V3 background service worker, ensuring CORS compliance without exposing keys to middlemen.
 
 ---
@@ -206,7 +196,6 @@ When a Google Form question includes an attached image, chart, or diagram, the a
 ```text
 ├── background.js         # Manifest V3 Background Service Worker (CORS & network handling)
 ├── google_form.js        # Content script for unpacked Chrome Extension
-├── google_form.user.js   # Standalone userscript for Tampermonkey / Violentmonkey
 ├── manifest.json         # Chrome Extension Manifest V3 configuration
 ├── LICENSE               # MIT License
 └── README.md             # Documentation, setup guide, and provider directory
