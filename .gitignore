@@ -1,0 +1,24 @@
+# Environment & Secret Keys
+.env
+.env.*
+*.key
+API_KEYS.txt
+api_keys.txt
+keys.txt
+
+# Operating System
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Logs & Temporary Files
+*.log
+*.tmp
+test_results.json
+models_list.json

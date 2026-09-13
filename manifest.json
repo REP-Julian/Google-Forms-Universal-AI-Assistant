@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "Google Forms Universal AI Assistant HUD",
+  "version": "6.5.0",
+  "description": "Full Google Forms AI Solver supporting all devices and all 12 question types with multi-provider AI.",
+  "permissions": [
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": [
+    "https://docs.google.com/*",
+    "https://forms.google.com/*",
+    "https://forms.gle/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://aistudio.google.com/*",
+    "https://anymodel.org/*",
+    "https://api.groq.com/*",
+    "https://api.mistral.ai/*",
+    "https://openrouter.ai/*",
+    "https://router.bynara.id/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://docs.google.com/forms/*",
+        "*://forms.google.com/*",
+        "*://forms.gle/*"
+      ],
+      "js": [
+        "google_form.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
