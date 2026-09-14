@@ -1,139 +1,97 @@
-/**
- * Google Forms Universal AI Assistant HUD
- * Chrome Extension (Manifest V3) Content Script
- *
- * Solves all 12 Google Form question types with multimodal vision analysis,
- * intelligent reasoning, authentic human-like pacing, and demographic persona generation.
- */
+﻿// ==UserScript==
+// @name         Google Forms Universal AI Assistant HUD
+// @namespace    https://tampermonkey.net/
+// @version      1.2.0
+// @description  Google Forms AI Solver Patch 1.2.0 with native DOCX, PDF, and PPT/PPTX document knowledge folder reading & AnyModel Dedicated Solver.
+// @author       Assistant
+// @match        *://docs.google.com/forms/*
+// @match        https://docs.google.com/forms/*
+// @match        *://docs.google.com/*
+// @match        https://docs.google.com/*
+// @match        *://forms.google.com/*
+// @match        https://forms.google.com/*
+// @match        *://forms.gle/*
+// @match        https://forms.gle/*
+// @include      *docs.google.com/forms*
+// @include      *forms.gle*
+// @include      *://docs.google.com/forms/*
+// @include      *://forms.gle/*
+// @include      https://docs.google.com/forms/*
+// @include      https://forms.gle/*
+// @connect      *
+// @connect      anymodel.org
+// @connect      www.google.com
+// @connect      google.com
+// @run-at       document-idle
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_registerMenuCommand
+// @grant        GM_xmlhttpRequest
+// @grant        unsafeWindow
+// ==/UserScript==
 
 (function () {
   'use strict';
 
-  console.log('%c[Google Form AI HUD v6.5]%c Multi-provider solver active! (Alt+H or F2 to toggle, or click ⚡ button)',
+  console.log('%c[Google Form AI HUD v1.2.0]%c Next Level Document RAG (DOCX, PDF, PPT) & AnyModel Dedicated Solver active! (Alt+H or F2 to toggle, or click ⚡ button)',
     'background: #2563eb; color: #ffffff; padding: 3px 8px; border-radius: 4px; font-weight: bold;',
     'color: #38bdf8; font-weight: bold;'
   );
 
   const STEP_DELAY_MS = 450;
-  const DEFAULT_PROVIDER = 'gemini';
+  const DEFAULT_PROVIDER = 'anymodel';
   const DEFAULT_API_KEY = '';
-  const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com';
+  const DEFAULT_BASE_URL = 'https://anymodel.org/v1';
+  const DEFAULT_MODEL = 'ag/gemini-3.7-flash-high';
 
-  // Multi-Provider Directory with live-verified models, key portals, and endpoints
+  // AnyModel Verified Live Models (Gemini, Claude, GPT & Auto-Router)
+  const ANYMODEL_MODELS = [
+    // --- GOOGLE GEMINI ---
+    { id: 'ag/gemini-3.7-flash-high', group: 'Google Gemini', label: 'Gemini 3.7 Flash High (ag/gemini-3.7-flash) [👁️ Vision, 🧠 Reasoning - Top Pick]' },
+    { id: 'ag/gemini-3.7-flash-low', group: 'Google Gemini', label: 'Gemini 3.7 Flash Low (ag/gemini-3.7-flash-low) [👁️ Vision, ⚡ Fast & Rock Solid]' },
+    { id: 'ag/gemini-2.5-flash', group: 'Google Gemini', label: 'Gemini 2.5 Flash (ag/gemini-2.5-flash) [👁️ Vision, ⚡ Ultra Fast]' },
+
+    // --- ANTHROPIC CLAUDE ---
+    { id: 'ag/claude-sonnet-4-6', group: 'Anthropic Claude', label: 'Claude Sonnet 4.6 (ag/claude-sonnet-4-6) [🧠 Deep Analysis & Nuance]' },
+    { id: 'cc/claude-sonnet-4-6', group: 'Anthropic Claude', label: 'Claude Sonnet 4.6 Alternate (cc/claude-sonnet-4-6) [🧠 Ultra High Fidelity]' },
+    { id: 'cc/claude-opus-4-6', group: 'Anthropic Claude', label: 'Claude Opus 4.6 (cc/claude-opus-4-6) [🎓 Complex Academic Reasoning]' },
+    { id: 'cc/claude-sonnet-5', group: 'Anthropic Claude', label: 'Claude Sonnet 5 (cc/claude-sonnet-5) [🚀 Next-Gen Preview]' },
+
+    // --- OPENAI GPT ---
+    { id: 'cx/gpt-6-astra', group: 'OpenAI GPT', label: 'GPT 6 Astra (cx/gpt-6-astra) [🚀 Next-Gen Frontier Intelligence]' },
+    { id: 'cx/gpt-5.5', group: 'OpenAI GPT', label: 'GPT 5.5 Flagship (cx/gpt-5.5) [🌟 Flagship General Knowledge]' },
+    { id: 'cx/gpt-5.6-luna', group: 'OpenAI GPT', label: 'GPT 5.6 Luna (cx/gpt-5.6-luna) [⚡ Fast, Accurate & Concise]' },
+    { id: 'cx/gpt-5.6-terra', group: 'OpenAI GPT', label: 'GPT 5.6 Terra (cx/gpt-5.6-terra) [📐 Logic & Quantitative Specialist]' },
+    { id: 'am/gpt-oss-20b', group: 'OpenAI GPT', label: 'GPT OSS 20B (am/gpt-oss-20b) [🍃 Lightweight & Reliable]' },
+
+    // --- FREE AUTO-ROUTER ---
+    { id: 'am/free', group: 'Auto-Routing / Free', label: 'AnyModel Free Auto-Router (am/free) [🆓 Free Backup]' }
+  ];
+
+  // Dedicated AnyModel Provider Directory
   const PROVIDERS = {
-    gemini: {
-      id: 'gemini',
-      name: 'Google Gemini Native (Primary / Recommended)',
-      baseUrl: 'https://generativelanguage.googleapis.com',
-      keyUrl: 'https://aistudio.google.com/app/apikey',
-      keyHelp: 'Get Free Gemini API Key at Google AI Studio (No Credit Card Required)',
-      isPrimary: true,
-      defaultKey: '',
-      isOpenAI: false,
-      defaultModel: 'gemini-2.5-flash',
-      models: [
-        { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash [👁️ Vision, ⚡ Fast - Recommended]' },
-        { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro [👁️ Vision, 🧠 Deep Reasoning]' },
-        { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash [👁️ Vision, 🧠 Reasoning]' },
-        { id: 'gemini-flash-latest', label: 'Gemini Flash Latest [👁️ Vision, ⚡ Fast]' },
-        { id: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash [👁️ Vision]' },
-        { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash [👁️ Vision]' }
-      ]
-    },
-    groq: {
-      id: 'groq',
-      name: 'Groq (Ultra-Fast LPU)',
-      baseUrl: 'https://api.groq.com/openai/v1',
-      keyUrl: 'https://console.groq.com/keys',
-      keyHelp: 'Get Free Groq API Key at console.groq.com/keys',
-      defaultKey: '',
-      isOpenAI: true,
-      defaultModel: 'llama-3.3-70b-versatile',
-      models: [
-        { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B Versatile [⚡ Fast, 🧠 High Quality]' },
-        { id: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B Instant [⚡ Ultra Fast]' },
-        { id: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B [⚡ Fast]' }
-      ]
-    },
     anymodel: {
       id: 'anymodel',
       name: 'AnyModel (anymodel.org)',
-      baseUrl: 'https://anymodel.org/v1',
-      keyUrl: 'https://anymodel.org',
-      keyHelp: 'Get AnyModel API Key at anymodel.org',
-      defaultKey: '',
+      baseUrl: DEFAULT_BASE_URL,
+      defaultKey: DEFAULT_API_KEY,
       isOpenAI: true,
-      defaultModel: 'ag/gemini-3.7-flash-high',
-      models: [
-        { id: 'ag/gemini-3.7-flash-high', label: 'Gemini 3.7 Flash High (ag/gemini-3.7-flash) [👁️ Vision, 🧠 Reasoning - Top Pick]' },
-        { id: 'ag/gemini-3.7-flash-low', label: 'Gemini 3.7 Flash Low (ag/gemini-3.7-flash-low) [👁️ Vision, ⚡ Ultra Fast]' },
-        { id: 'ag/gemini-3.6-flash-high', label: 'Gemini 3.6 Flash High (ag/gemini-3.6-flash-high) [👁️ Vision, 🧠 Reasoning]' },
-        { id: 'ag/gemini-3-flash', label: 'Gemini 3 Flash (ag/gemini-3-flash) [👁️ Vision, ⚡ Fast]' },
-        { id: 'ag/gemini-2.5-flash', label: 'Antigravity Flash (ag/gemini-2.5-flash) [👁️ Vision, ⚡ Fast]' },
-        { id: 'cx/gpt-5.5', label: 'OpenAI GPT-5.5 (cx/gpt-5.5) [👁️ Vision, 🧠 Reasoning]' },
-        { id: 'cc/claude-sonnet-5', label: 'Claude Sonnet 5 (cc/claude-sonnet-5) [👁️ Vision, 🧠 Reasoning]' },
-        { id: 'cc/claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5 (cc/claude-haiku-4-5) [👁️ Vision, ⚡ Fast]' },
-        { id: 'xai/grok-4.5', label: 'xAI Grok 4.5 (xai/grok-4.5) [👁️ Vision, ⚡ Fast]' },
-        { id: 'am/free', label: 'Free Models Auto Router (am/free) [🆓 Free]' }
-      ]
-    },
-    mistral: {
-      id: 'mistral',
-      name: 'Mistral AI',
-      baseUrl: 'https://api.mistral.ai/v1',
-      keyUrl: 'https://console.mistral.ai/api-keys/',
-      keyHelp: 'Get Mistral API Key at console.mistral.ai',
-      defaultKey: '',
-      isOpenAI: true,
-      defaultModel: 'codestral-latest',
-      models: [
-        { id: 'codestral-latest', label: 'Mistral Codestral [🧠 Top Logic & Code]' },
-        { id: 'pixtral-12b-2409', label: 'Mistral Pixtral 12B [👁️ Multimodal Vision]' },
-        { id: 'mistral-small-latest', label: 'Mistral Small Latest [⚡ Fast]' }
-      ]
-    },
-    openrouter: {
-      id: 'openrouter',
-      name: 'OpenRouter',
-      baseUrl: 'https://openrouter.ai/api/v1',
-      keyUrl: 'https://openrouter.ai/keys',
-      keyHelp: 'Get OpenRouter API Key at openrouter.ai/keys',
-      defaultKey: '',
-      isOpenAI: true,
-      defaultModel: 'google/gemini-2.0-flash-exp:free',
-      models: [
-        { id: 'google/gemini-2.0-flash-exp:free', label: 'Gemini 2.0 Flash [👁️ Vision, 🆓 Free]' },
-        { id: 'meta-llama/llama-3.3-70b-instruct:free', label: 'Llama 3.3 70B Instruct [🧠 Thinking, 🆓 Free]' },
-        { id: 'mistralai/mistral-small-24b-instruct-2501:free', label: 'Mistral Small 24B [🆓 Free]' }
-      ]
-    },
-    nararouter: {
-      id: 'nararouter',
-      name: 'NaraRouter',
-      baseUrl: 'https://router.bynara.id/v1',
-      keyUrl: 'https://router.bynara.id',
-      keyHelp: 'Get NaraRouter Key at router.bynara.id',
-      defaultKey: '',
-      isOpenAI: true,
-      defaultModel: 'agnes-2.5-flash',
-      models: [
-        { id: 'agnes-2.5-flash', label: 'Agnes 2.5 Flash [👁️ Vision, ⚡ Fast — Verified ✅]' },
-        { id: 'nemotron-3.5-lightning-free', label: 'Nemotron 3.5 Lightning [🧠 Thinking, 🆓 Free — Verified ✅]' },
-        { id: 'deepseek-v4.1-flash-free', label: 'DeepSeek V4.1 Flash [🆓 Free — Plan Required]' },
-        { id: 'deepseek-v4.1-flash', label: 'DeepSeek V4.1 Flash [⚡ Fast]' },
-        { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash [⚡ Fast]' },
-        { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro [🧠 Reasoning]' },
-        { id: 'qwen3.8-flash-free', label: 'Qwen 3.8 Flash [🆓 Free — Plan Required]' },
-        { id: 'qwen3.8-flash', label: 'Qwen 3.8 Flash [⚡ Fast]' },
-        { id: 'glm-5.3-free', label: 'GLM 5.3 [🆓 Free — Credits Required]' },
-        { id: 'laguna-s-2.1', label: 'Laguna S 2.1 [🆓 Free]' }
-      ]
+      defaultModel: DEFAULT_MODEL,
+      models: ANYMODEL_MODELS
     }
   };
 
+  const WEB_SEARCH_MODES = [
+    { id: 'auto', label: '🌐 Auto (Live Google Search on Quizzes - Recommended)' },
+    { id: 'always', label: '⚡ Always Google Search (All Questions)' },
+    { id: 'off', label: '🚫 Off (Pure AnyModel Reasoning)' }
+  ];
+
   const TOKEN_MODES = [
-    { id: 'maximized', label: '🚀 Maximized (2,048 Tokens - Full Reasoning)', maxTokens: 2048 },
-    { id: 'ultra', label: '⚡ Ultra Headroom (4,096 Tokens - Complex Questions)', maxTokens: 4096 },
+    { id: 'unlimited', label: '♾️ Unlimited (No Token Limit - Full Output & Reasoning)', maxTokens: 0 },
+    { id: 'ultra', label: '⚡ Ultra Headroom (8,192 Tokens)', maxTokens: 8192 },
+    { id: 'maximized', label: '🚀 Maximized (4,096 Tokens)', maxTokens: 4096 },
+    { id: 'standard', label: '⚖️ Standard (2,048 Tokens)', maxTokens: 2048 },
     { id: 'compact', label: '🍃 Compact (500 Tokens - Fast & Light)', maxTokens: 500 }
   ];
 
@@ -150,6 +108,13 @@
     { id: 'bell', label: '⚖️ Balanced Bell-Curve (Center 3-4)', desc: 'Centered around 3 and 4 normal distribution' },
     { id: 'mixed', label: '🔀 Varied Mixed (Dynamic Diversity)', desc: 'Organic varied opinions across questions' },
     { id: 'ai', label: '🤖 Pure AI Choice (Unbiased)', desc: 'Pure unadjusted model choice' }
+  ];
+
+  // Document Knowledge Grounding Modes (Patch 1.2.0 Next Level)
+  const GROUNDING_MODES = [
+    { id: 'priority', label: '📚 Documents Priority (Strict Grounding - 0 Web Waste, Top Pick)' },
+    { id: 'hybrid', label: '⚡ Hybrid (Documents + Live Google Web Search)' },
+    { id: 'fallback', label: '🌐 Fallback (Documents First, Web Search Backup)' }
   ];
 
   let isProcessing = false;
@@ -240,9 +205,15 @@
 
 
 
-  // Safe storage helpers for Chrome Extension
+  // Safe storage helpers
   function getSafeValue(key, defVal = '') {
     try {
+      if (typeof GM_getValue === 'function') {
+        const gmVal = GM_getValue(key);
+        if (gmVal !== undefined && gmVal !== null && gmVal !== '') {
+          return gmVal;
+        }
+      }
       const localVal = localStorage.getItem('form_ai_' + key);
       if (localVal !== null && localVal !== undefined && localVal !== '') {
         return localVal;
@@ -255,8 +226,985 @@
 
   function setSafeValue(key, val) {
     try {
+      if (typeof GM_setValue === 'function') {
+        GM_setValue(key, val);
+      }
       localStorage.setItem('form_ai_' + key, val);
     } catch (e) {}
+  }
+
+  // ============================================================================
+  // DOCUMENT KNOWLEDGE BASE & PARSER ENGINE (PATCH 1.2.0 NEXT LEVEL)
+  // Native in-browser parsing for DOCX, PDF, and PPT/PPTX with zero external network overhead
+  // ============================================================================
+  let activeKnowledgeDocs = [];
+  let updateHUDKnowledgeListFn = null;
+
+  async function decompressRawDeflate(compressedUint8Array) {
+    if (typeof DecompressionStream !== 'undefined') {
+      try {
+        const ds = new DecompressionStream('deflate-raw');
+        const writer = ds.writable.getWriter();
+        writer.write(compressedUint8Array);
+        writer.close();
+        const chunks = [];
+        const reader = ds.readable.getReader();
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+        }
+        let totalLen = chunks.reduce((acc, c) => acc + c.length, 0);
+        const out = new Uint8Array(totalLen);
+        let offset = 0;
+        for (const c of chunks) {
+          out.set(c, offset);
+          offset += c.length;
+        }
+        return out;
+      } catch (err) {
+        console.warn('[DocParser] Native deflate-raw failed:', err);
+      }
+    }
+    throw new Error('DecompressionStream (deflate-raw) not supported in this browser environment.');
+  }
+
+  async function unzipArchive(input) {
+    let arrayBuffer;
+    if (input instanceof ArrayBuffer) {
+      arrayBuffer = input;
+    } else if (input && input.buffer instanceof ArrayBuffer) {
+      arrayBuffer = input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength);
+    } else {
+      throw new Error('Unsupported buffer input for ZIP archive');
+    }
+
+    const view = new DataView(arrayBuffer);
+    const bytes = new Uint8Array(arrayBuffer);
+    const files = {};
+
+    let eocdOffset = -1;
+    const maxSearch = Math.min(65536, bytes.length - 22);
+    for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 22 - maxSearch); i--) {
+      if (view.getUint32(i, true) === 0x06054b50) {
+        eocdOffset = i;
+        break;
+      }
+    }
+
+    if (eocdOffset === -1) {
+      throw new Error('Invalid ZIP archive: End of Central Directory (EOCD) not found.');
+    }
+
+    const cdCount = view.getUint16(eocdOffset + 10, true);
+    const cdOffset = view.getUint32(eocdOffset + 16, true);
+
+    let currentCdOffset = cdOffset;
+    for (let i = 0; i < cdCount; i++) {
+      if (currentCdOffset + 46 > bytes.length) break;
+      const sig = view.getUint32(currentCdOffset, true);
+      if (sig !== 0x02014b50) break;
+
+      const method = view.getUint16(currentCdOffset + 10, true);
+      const compSize = view.getUint32(currentCdOffset + 20, true);
+      const fnLen = view.getUint16(currentCdOffset + 28, true);
+      const extraLen = view.getUint16(currentCdOffset + 30, true);
+      const commentLen = view.getUint16(currentCdOffset + 32, true);
+      const localHeaderOffset = view.getUint32(currentCdOffset + 42, true);
+
+      const fnBytes = bytes.slice(currentCdOffset + 46, currentCdOffset + 46 + fnLen);
+      const fileName = new TextDecoder('utf-8').decode(fnBytes);
+
+      if (localHeaderOffset + 30 <= bytes.length) {
+        const localSig = view.getUint32(localHeaderOffset, true);
+        if (localSig === 0x04034b50) {
+          const localFnLen = view.getUint16(localHeaderOffset + 26, true);
+          const localExtraLen = view.getUint16(localHeaderOffset + 28, true);
+          const dataStart = localHeaderOffset + 30 + localFnLen + localExtraLen;
+          const compressedData = bytes.slice(dataStart, dataStart + compSize);
+
+          if (method === 0) {
+            files[fileName] = compressedData;
+          } else if (method === 8) {
+            try {
+              files[fileName] = await decompressRawDeflate(compressedData);
+            } catch (err) {
+              console.warn(`[DocParser] Failed to decompress "${fileName}":`, err);
+            }
+          }
+        }
+      }
+      currentCdOffset += 46 + fnLen + extraLen + commentLen;
+    }
+    return files;
+  }
+
+  // --- DOCX Parser ---
+  async function parseDocx(arrayBuffer) {
+    const files = await unzipArchive(arrayBuffer);
+    const docXmlData = files['word/document.xml'];
+    if (!docXmlData) {
+      throw new Error('Invalid DOCX: missing word/document.xml');
+    }
+
+    const xmlStr = new TextDecoder('utf-8').decode(docXmlData);
+    const lines = [];
+
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(xmlStr, 'text/xml');
+      const paragraphs = doc.getElementsByTagName('w:p');
+
+      for (let i = 0; i < paragraphs.length; i++) {
+        const p = paragraphs[i];
+        const textNodes = p.getElementsByTagName('w:t');
+        let pText = '';
+        for (let j = 0; j < textNodes.length; j++) {
+          pText += textNodes[j].textContent;
+        }
+        const trimmed = pText.trim();
+        if (trimmed) lines.push(trimmed);
+      }
+
+      // Extract tables if any
+      const tables = doc.getElementsByTagName('w:tbl');
+      if (tables.length > 0 && lines.length === 0) {
+        for (let t = 0; t < tables.length; t++) {
+          const rows = tables[t].getElementsByTagName('w:tr');
+          for (let r = 0; r < rows.length; r++) {
+            const cells = rows[r].getElementsByTagName('w:tc');
+            const cellTexts = [];
+            for (let c = 0; c < cells.length; c++) {
+              const tNodes = cells[c].getElementsByTagName('w:t');
+              let ct = '';
+              for (let tn of tNodes) ct += tn.textContent;
+              if (ct.trim()) cellTexts.push(ct.trim());
+            }
+            if (cellTexts.length > 0) lines.push(cellTexts.join(' | '));
+          }
+        }
+      }
+    } catch (domErr) {
+      // Regex fallback
+      const pMatches = xmlStr.match(/<w:p[\s\S]*?<\/w:p>/g) || [];
+      for (const pXml of pMatches) {
+        const tMatches = pXml.match(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g) || [];
+        const text = tMatches.map(m => m.replace(/<[^>]+>/g, '')).join('').trim();
+        if (text) lines.push(text);
+      }
+    }
+
+    // Check footnotes / endnotes
+    for (const noteFile of ['word/footnotes.xml', 'word/endnotes.xml']) {
+      if (files[noteFile]) {
+        const noteXml = new TextDecoder('utf-8').decode(files[noteFile]);
+        const tMatches = noteXml.match(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g) || [];
+        const noteText = tMatches.map(m => m.replace(/<[^>]+>/g, '')).join(' ').trim();
+        if (noteText) lines.push(`[Reference Note]: ${noteText}`);
+      }
+    }
+
+    const fullText = lines.join('\n\n');
+    return {
+      fullText,
+      lines,
+      pageOrSlideCount: Math.max(1, Math.ceil(lines.length / 8))
+    };
+  }
+
+  // --- PPTX Parser ---
+  async function parsePptx(arrayBuffer) {
+    const files = await unzipArchive(arrayBuffer);
+    const slideFileNames = Object.keys(files).filter(k => /^ppt\/slides\/slide\d+\.xml$/i.test(k));
+
+    slideFileNames.sort((a, b) => {
+      const numA = parseInt(a.replace(/\D/g, ''), 10) || 0;
+      const numB = parseInt(b.replace(/\D/g, ''), 10) || 0;
+      return numA - numB;
+    });
+
+    const slides = [];
+
+    for (let i = 0; i < slideFileNames.length; i++) {
+      const sName = slideFileNames[i];
+      const slideNum = parseInt(sName.replace(/\D/g, ''), 10) || (i + 1);
+      const xmlStr = new TextDecoder('utf-8').decode(files[sName]);
+      const slideTexts = [];
+
+      try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(xmlStr, 'text/xml');
+        const textNodes = doc.getElementsByTagName('a:t');
+        for (let t = 0; t < textNodes.length; t++) {
+          const txt = textNodes[t].textContent.trim();
+          if (txt) slideTexts.push(txt);
+        }
+      } catch (domErr) {
+        const tMatches = xmlStr.match(/<a:t[^>]*>([\s\S]*?)<\/a:t>/g) || [];
+        slideTexts.push(...tMatches.map(m => m.replace(/<[^>]+>/g, '').trim()).filter(Boolean));
+      }
+
+      // Check speaker notes
+      const noteName = `ppt/notesSlides/notesSlide${slideNum}.xml`;
+      if (files[noteName]) {
+        const noteXml = new TextDecoder('utf-8').decode(files[noteName]);
+        const nMatches = noteXml.match(/<a:t[^>]*>([\s\S]*?)<\/a:t>/g) || [];
+        const noteText = nMatches.map(m => m.replace(/<[^>]+>/g, '').trim()).filter(Boolean).join(' ');
+        if (noteText) slideTexts.push(`[Speaker Notes: ${noteText}]`);
+      }
+
+      if (slideTexts.length > 0) {
+        slides.push({
+          slideNum,
+          text: `[Slide ${slideNum}]\n` + slideTexts.join('\n')
+        });
+      }
+    }
+
+    const fullText = slides.map(s => s.text).join('\n\n');
+    return {
+      fullText,
+      slides,
+      pageOrSlideCount: Math.max(1, slides.length)
+    };
+  }
+
+  // --- PPT Binary Parser (PowerPoint 97-2004 & Renamed PPTX) ---
+  async function parsePpt(arrayBuffer) {
+    const bytes = new Uint8Array(arrayBuffer);
+    // If actually a PPTX ZIP archive
+    if (bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4B && bytes[2] === 0x03 && bytes[3] === 0x04) {
+      return await parsePptx(arrayBuffer);
+    }
+
+    const lines = [];
+    let curSlide = 1;
+    let currentSlideText = [];
+
+    const view = new DataView(arrayBuffer);
+    let i = 0;
+    while (i < bytes.length - 8) {
+      const recType = view.getUint16(i + 2, true);
+      const recLen = view.getUint32(i + 4, true);
+
+      if (recType === 0x0F9F || recType === 0x03EE) { // Slide container
+        if (currentSlideText.length > 0) {
+          lines.push(`[Slide ${curSlide}]\n` + currentSlideText.join('\n'));
+          curSlide++;
+          currentSlideText = [];
+        }
+        i += 8;
+        continue;
+      }
+
+      if (recType === 0x0FA0 && recLen > 0 && recLen < 200000 && (i + 8 + recLen <= bytes.length)) { // TextCharsAtom (UTF-16LE)
+        try {
+          const slice = bytes.slice(i + 8, i + 8 + recLen);
+          const str = new TextDecoder('utf-16le').decode(slice).trim();
+          if (str && str.length >= 2 && !/^[\x00-\x1F\s]+$/.test(str)) {
+            currentSlideText.push(str.replace(/\r/g, '\n').replace(/\n{2,}/g, '\n'));
+          }
+        } catch (e) {}
+        i += 8 + recLen;
+        continue;
+      }
+
+      if (recType === 0x0FA8 && recLen > 0 && recLen < 200000 && (i + 8 + recLen <= bytes.length)) { // TextBytesAtom (ASCII)
+        try {
+          const slice = bytes.slice(i + 8, i + 8 + recLen);
+          const str = new TextDecoder('latin1').decode(slice).trim();
+          if (str && str.length >= 2 && !/^[\x00-\x1F\s]+$/.test(str)) {
+            currentSlideText.push(str.replace(/\r/g, '\n').replace(/\n{2,}/g, '\n'));
+          }
+        } catch (e) {}
+        i += 8 + recLen;
+        continue;
+      }
+
+      i++;
+    }
+
+    if (currentSlideText.length > 0) {
+      lines.push(`[Slide ${curSlide}]\n` + currentSlideText.join('\n'));
+    }
+
+    if (lines.length === 0) {
+      const rawRuns = extractPrintableStringsFromBytes(bytes);
+      if (rawRuns.length > 0) {
+        lines.push(rawRuns.join('\n'));
+      }
+    }
+
+    const fullText = lines.join('\n\n');
+    return {
+      fullText,
+      slides: lines.map((text, idx) => ({ slideNum: idx + 1, text })),
+      pageOrSlideCount: Math.max(1, lines.length)
+    };
+  }
+
+  function extractPrintableStringsFromBytes(bytes, minLength = 4) {
+    const strings = [];
+    let currentU16 = '';
+    for (let i = 0; i < bytes.length - 1; i += 2) {
+      const code = bytes[i] | (bytes[i + 1] << 8);
+      if (code >= 32 && code <= 126) {
+        currentU16 += String.fromCharCode(code);
+      } else if (code === 10 || code === 13) {
+        if (currentU16.trim().length >= minLength) strings.push(currentU16.trim());
+        currentU16 = '';
+      } else {
+        if (currentU16.trim().length >= minLength) strings.push(currentU16.trim());
+        currentU16 = '';
+      }
+    }
+    if (currentU16.trim().length >= minLength) strings.push(currentU16.trim());
+
+    let currentAscii = '';
+    for (let i = 0; i < bytes.length; i++) {
+      const b = bytes[i];
+      if (b >= 32 && b <= 126) {
+        currentAscii += String.fromCharCode(b);
+      } else if (b === 10 || b === 13) {
+        if (currentAscii.trim().length >= minLength) strings.push(currentAscii.trim());
+        currentAscii = '';
+      } else {
+        if (currentAscii.trim().length >= minLength) strings.push(currentAscii.trim());
+        currentAscii = '';
+      }
+    }
+    if (currentAscii.trim().length >= minLength) strings.push(currentAscii.trim());
+
+    const filtered = strings.filter(s => {
+      if (/^[A-Za-z0-9+/=]{20,}$/.test(s)) return false;
+      if (/^([0-9a-f]{2}){8,}$/i.test(s)) return false;
+      if (/xmlns|schema|microsoft|schemas-microsoft|Font/i.test(s)) return false;
+      return /[a-zA-Z]{3,}/.test(s);
+    });
+
+    return Array.from(new Set(filtered));
+  }
+
+  // --- PDF Parser ---
+  async function parsePdf(arrayBuffer) {
+    const bytes = new Uint8Array(arrayBuffer);
+    const textDecoder = new TextDecoder('latin1');
+    const rawString = textDecoder.decode(bytes);
+
+    const pages = [];
+    let pageNumber = 1;
+
+    const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+    let match;
+    const streams = [];
+
+    while ((match = streamRegex.exec(rawString)) !== null) {
+      const streamStart = match.index + match[0].indexOf('\n') + 1;
+      const streamEnd = match.index + match[0].lastIndexOf('\nendstream');
+      const streamBytes = bytes.slice(streamStart, streamEnd > streamStart ? streamEnd : streamStart + match[1].length);
+
+      const dictSlice = rawString.slice(Math.max(0, match.index - 350), match.index);
+      const isFlate = /\/Filter\s*\/FlateDecode/i.test(dictSlice) || /\/FlateDecode/i.test(dictSlice);
+
+      streams.push({
+        bytes: streamBytes,
+        isFlate
+      });
+    }
+
+    for (let sIdx = 0; sIdx < streams.length; sIdx++) {
+      const s = streams[sIdx];
+      let content = '';
+
+      if (s.isFlate) {
+        try {
+          let toDecompress = s.bytes;
+          if (toDecompress.length > 6 && toDecompress[0] === 0x78) {
+            toDecompress = toDecompress.slice(2, toDecompress.length - 4);
+          }
+          const decompressed = await decompressRawDeflate(toDecompress);
+          content = new TextDecoder('latin1').decode(decompressed);
+        } catch (err) {
+          content = textDecoder.decode(s.bytes);
+        }
+      } else {
+        content = textDecoder.decode(s.bytes);
+      }
+
+      if (/BT[\s\S]*?ET/.test(content)) {
+        const pageText = extractPdfTextOperators(content);
+        if (pageText && pageText.trim()) {
+          pages.push({
+            page: pageNumber++,
+            text: `[Page ${pageNumber - 1}]\n` + pageText.trim()
+          });
+        }
+      }
+    }
+
+    if (pages.length === 0) {
+      const directTexts = extractPdfTextOperators(rawString);
+      if (directTexts && directTexts.trim()) {
+        pages.push({ page: 1, text: directTexts.trim() });
+      }
+    }
+
+    const fullText = pages.map(p => p.text).join('\n\n');
+    return {
+      fullText,
+      pages,
+      pageOrSlideCount: Math.max(1, pages.length)
+    };
+  }
+
+  function extractPdfTextOperators(content) {
+    const extractedLines = [];
+    const btRegex = /BT([\s\S]*?)ET/g;
+    let btMatch;
+
+    while ((btMatch = btRegex.exec(content)) !== null) {
+      const block = btMatch[1];
+      const lineTokens = [];
+
+      const opRegex = /(\((?:\\\(|\\\)|[^\)])*\)|<[0-9a-fA-F\s]+>)\s*(Tj|'|")|\[([\s\S]*?)\]\s*TJ/g;
+      let opMatch;
+
+      while ((opMatch = opRegex.exec(block)) !== null) {
+        if (opMatch[1]) {
+          lineTokens.push(decodePdfString(opMatch[1]));
+        } else if (opMatch[3]) {
+          const arrContent = opMatch[3];
+          const itemRegex = /(\((?:\\\(|\\\)|[^\)])*\)|<[0-9a-fA-F\s]+>)/g;
+          let itemMatch;
+          let tjPart = '';
+          while ((itemMatch = itemRegex.exec(arrContent)) !== null) {
+            tjPart += decodePdfString(itemMatch[1]);
+          }
+          if (tjPart) lineTokens.push(tjPart);
+        }
+      }
+
+      if (lineTokens.length > 0) {
+        extractedLines.push(lineTokens.join(' '));
+      }
+    }
+
+    return extractedLines.join('\n');
+  }
+
+  function decodePdfString(str) {
+    if (!str) return '';
+    if (str.startsWith('<') && str.endsWith('>')) {
+      const hex = str.slice(1, -1).replace(/\s/g, '');
+      if (hex.toUpperCase().startsWith('FEFF')) {
+        // UTF-16BE encoded PDF string
+        let result = '';
+        for (let i = 4; i < hex.length; i += 4) {
+          const code = parseInt(hex.substr(i, 4), 16);
+          if (!isNaN(code)) result += String.fromCharCode(code);
+        }
+        return result;
+      }
+      let result = '';
+      for (let i = 0; i < hex.length; i += 2) {
+        const byte = parseInt(hex.substr(i, 2), 16);
+        if (!isNaN(byte) && byte >= 32) result += String.fromCharCode(byte);
+      }
+      return result;
+    }
+    if (str.startsWith('(') && str.endsWith(')')) {
+      let unescaped = str.slice(1, -1);
+      if (unescaped.charCodeAt(0) === 0xFE && unescaped.charCodeAt(1) === 0xFF) {
+        let result = '';
+        for (let i = 2; i < unescaped.length - 1; i += 2) {
+          const code = (unescaped.charCodeAt(i) << 8) | unescaped.charCodeAt(i + 1);
+          result += String.fromCharCode(code);
+        }
+        return result;
+      }
+      unescaped = unescaped
+        .replace(/\\([0-7]{1,3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8)))
+        .replace(/\\r/g, ' ')
+        .replace(/\\n/g, ' ')
+        .replace(/\\t/g, ' ')
+        .replace(/\\b/g, '')
+        .replace(/\\f/g, '')
+        .replace(/\\\(/g, '(')
+        .replace(/\\\)/g, ')')
+        .replace(/\\\\/g, '\\')
+        .replace(/\\(.)/g, '$1');
+      return unescaped;
+    }
+    return str;
+  }
+
+  // --- Plain Text / Markdown Parser ---
+  function parsePlainText(arrayBuffer) {
+    const text = new TextDecoder('utf-8').decode(arrayBuffer);
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    return {
+      fullText: text,
+      lines,
+      pageOrSlideCount: Math.max(1, Math.ceil(lines.length / 10))
+    };
+  }
+
+  // Unified Document Dispatcher (handles File object or { name, arrayBuffer, size })
+  async function parseDocumentFile(file) {
+    const name = file.name || 'document';
+    const lower = name.toLowerCase();
+    let arrayBuffer;
+    if (file.arrayBuffer && typeof file.arrayBuffer === 'function') {
+      arrayBuffer = await file.arrayBuffer();
+    } else if (file.arrayBuffer instanceof ArrayBuffer) {
+      arrayBuffer = file.arrayBuffer;
+    } else if (file.buffer instanceof ArrayBuffer) {
+      arrayBuffer = file.buffer;
+    } else {
+      throw new Error('Unable to extract binary arrayBuffer for ' + name);
+    }
+    const fileSize = file.size || (arrayBuffer ? arrayBuffer.byteLength : 0);
+    let type = 'unknown';
+    let parsedData = null;
+
+    if (lower.endsWith('.docx')) {
+      type = 'docx';
+      parsedData = await parseDocx(arrayBuffer);
+    } else if (lower.endsWith('.pptx')) {
+      type = 'pptx';
+      parsedData = await parsePptx(arrayBuffer);
+    } else if (lower.endsWith('.ppt')) {
+      type = 'ppt';
+      parsedData = await parsePpt(arrayBuffer);
+    } else if (lower.endsWith('.pdf')) {
+      type = 'pdf';
+      parsedData = await parsePdf(arrayBuffer);
+    } else if (lower.endsWith('.txt') || lower.endsWith('.md')) {
+      type = lower.endsWith('.md') ? 'md' : 'txt';
+      parsedData = parsePlainText(arrayBuffer);
+    } else {
+      // Fallback: try plain text
+      type = 'txt';
+      parsedData = parsePlainText(arrayBuffer);
+    }
+
+    const words = (parsedData.fullText || '').trim().split(/\s+/).filter(Boolean).length;
+    const docId = 'doc_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    const chunks = createDocumentChunks(docId, name, type, parsedData);
+
+    return {
+      id: docId,
+      name,
+      type,
+      size: fileSize,
+      text: parsedData.fullText || '',
+      chunks,
+      wordCount: words,
+      slideOrPageCount: parsedData.pageOrSlideCount || 1,
+      loadedAt: new Date().toLocaleTimeString()
+    };
+  }
+
+  // Document Chunking into Logical Excerpts (~400-800 chars)
+  function createDocumentChunks(docId, fileName, fileType, parsedData) {
+    const chunks = [];
+    if (parsedData.slides && parsedData.slides.length > 0) {
+      parsedData.slides.forEach(s => {
+        chunks.push({
+          id: `${docId}_slide_${s.slideNum}`,
+          docId,
+          source: fileName,
+          type: fileType,
+          location: `Slide ${s.slideNum}`,
+          text: s.text.trim()
+        });
+      });
+    } else if (parsedData.pages && parsedData.pages.length > 0) {
+      parsedData.pages.forEach(p => {
+        const paragraphs = p.text.split('\n\n').filter(Boolean);
+        if (paragraphs.length <= 1) {
+          chunks.push({
+            id: `${docId}_p_${p.page}`,
+            docId,
+            source: fileName,
+            type: fileType,
+            location: `Page ${p.page}`,
+            text: p.text.trim()
+          });
+        } else {
+          paragraphs.forEach((para, idx) => {
+            chunks.push({
+              id: `${docId}_p_${p.page}_${idx}`,
+              docId,
+              source: fileName,
+              type: fileType,
+              location: `Page ${p.page}`,
+              text: para.trim()
+            });
+          });
+        }
+      });
+    } else {
+      const paragraphs = (parsedData.fullText || '').split(/\n\s*\n/).filter(Boolean);
+      let currentChunk = '';
+      let chunkIdx = 1;
+      paragraphs.forEach(p => {
+        if ((currentChunk + '\n' + p).length > 750) {
+          if (currentChunk.trim()) {
+            chunks.push({
+              id: `${docId}_sec_${chunkIdx++}`,
+              docId,
+              source: fileName,
+              type: fileType,
+              location: `Section ${chunkIdx - 1}`,
+              text: currentChunk.trim()
+            });
+          }
+          currentChunk = p;
+        } else {
+          currentChunk += (currentChunk ? '\n\n' : '') + p;
+        }
+      });
+      if (currentChunk.trim()) {
+        chunks.push({
+          id: `${docId}_sec_${chunkIdx}`,
+          docId,
+          source: fileName,
+          type: fileType,
+          location: `Section ${chunkIdx}`,
+          text: currentChunk.trim()
+        });
+      }
+    }
+    return chunks;
+  }
+
+  // --- In-Memory Fast Semantic / Keyword Search Engine ---
+  const KNOWLEDGE_STOP_WORDS = new Set([
+    'the', 'is', 'at', 'which', 'on', 'and', 'a', 'an', 'in', 'to', 'of', 'for', 'with', 'by',
+    'that', 'this', 'it', 'from', 'as', 'are', 'was', 'were', 'or', 'be', 'has', 'had', 'have',
+    'what', 'why', 'how', 'when', 'where', 'who', 'does', 'did', 'do', 'can', 'could', 'should',
+    'would', 'question', 'following', 'select', 'choose', 'correct', 'true', 'false', 'below',
+    'above', 'answer', 'options', 'statement', 'yang', 'dan', 'di', 'dari', 'ini', 'itu', 'adalah',
+    'untuk', 'dengan', 'pada', 'ke', 'oleh', 'sebagai', 'dalam', 'akan', 'atau', 'ang', 'mga', 'ng', 'sa'
+  ]);
+
+  function extractKeywords(text) {
+    if (!text) return [];
+    const words = text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/);
+    return words.filter(w => w.length >= 3 && !KNOWLEDGE_STOP_WORDS.has(w));
+  }
+
+  function searchKnowledgeBase(queryText, optionsList = [], topK = 4) {
+    if (!activeKnowledgeDocs || activeKnowledgeDocs.length === 0) return { excerpts: [], summary: '' };
+
+    const allChunks = [];
+    activeKnowledgeDocs.forEach(doc => {
+      if (doc.chunks && Array.isArray(doc.chunks)) {
+        allChunks.push(...doc.chunks);
+      }
+    });
+
+    if (allChunks.length === 0) return { excerpts: [], summary: '' };
+
+    const qKeywords = extractKeywords(queryText);
+    const optKeywords = optionsList.flatMap(opt => extractKeywords(opt));
+    const cleanQ = (queryText || '').toLowerCase();
+
+    const scored = allChunks.map(chunk => {
+      const cLower = chunk.text.toLowerCase();
+      let score = 0;
+
+      // 1. Question keyword matches
+      qKeywords.forEach(kw => {
+        if (cLower.includes(kw)) {
+          score += 3;
+          const count = (cLower.match(new RegExp(`\\b${kw}\\b`, 'g')) || []).length;
+          if (count > 1) score += Math.min(count * 1.5, 6);
+        }
+      });
+
+      // 2. Options matches (Huge bonus if an entire option appears in the slide/page!)
+      optionsList.forEach(opt => {
+        const optClean = opt.trim().toLowerCase();
+        if (optClean.length >= 4 && cLower.includes(optClean)) {
+          score += 15;
+        }
+      });
+
+      optKeywords.forEach(kw => {
+        if (cLower.includes(kw)) score += 2;
+      });
+
+      // 3. Exact phrase match bonus
+      if (cleanQ.length > 12 && cLower.includes(cleanQ.slice(0, Math.min(cleanQ.length, 35)))) {
+        score += 25;
+      }
+
+      return { chunk, score };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    const bestHits = scored.filter(s => s.score >= 5).slice(0, topK);
+
+    if (bestHits.length === 0) {
+      if (scored[0] && scored[0].score >= 2) {
+        bestHits.push(scored[0]);
+      } else {
+        return { excerpts: [], summary: '' };
+      }
+    }
+
+    const excerpts = bestHits.map(h => ({
+      source: h.chunk.source,
+      location: h.chunk.location,
+      text: h.chunk.text,
+      score: Math.round(h.score)
+    }));
+
+    const summary = excerpts.map(e => `[Source: ${e.source} (${e.location})]\n"${e.text}"`).join('\n\n');
+    return { excerpts, summary };
+  }
+
+  function getGroundingPrompt(qInfo, labels = [], isLikert = false) {
+    if (isLikert) return { prompt: '', found: false, mode: 'off' };
+    const mode = getSafeValue('grounding_mode', 'priority');
+    const docGrounding = searchKnowledgeBase(qInfo.fullText || qInfo.title, labels);
+
+    if (docGrounding.summary && docGrounding.excerpts.length > 0) {
+      const primarySource = docGrounding.excerpts[0]?.source || 'Study Material Folder';
+      const topScore = docGrounding.excerpts[0]?.score || 0;
+      const count = docGrounding.excerpts.length;
+
+      const groundingHeader = `═══════════════════════════════════════════════════════════════════\n📚 SOURCE MATERIAL EVIDENCE (From user's study folder - ${count} matching excerpts):\n${docGrounding.summary}\n═══════════════════════════════════════════════════════════════════\nCRITICAL GROUNDING INSTRUCTIONS:\n- The above excerpts are extracted directly from the user's course documents (${primarySource}).\n- Treat this evidence as absolute ground truth above all general knowledge or web data.\n- Pick/formulate the answer that strictly aligns with these exact lecture slides / notes.\n\n`;
+
+      return {
+        prompt: groundingHeader,
+        found: true,
+        primarySource,
+        topScore,
+        count,
+        mode
+      };
+    }
+
+    return { prompt: '', found: false, mode };
+  }
+
+  // Storage Persistence for Document Knowledge Base
+  function saveKnowledgeDocsToStorage() {
+    try {
+      const lightweightDocs = activeKnowledgeDocs.map(d => ({
+        id: d.id,
+        name: d.name,
+        type: d.type,
+        size: d.size,
+        wordCount: d.wordCount,
+        slideOrPageCount: d.slideOrPageCount,
+        loadedAt: d.loadedAt,
+        chunks: d.chunks
+      }));
+      const jsonStr = JSON.stringify(lightweightDocs);
+      if (jsonStr.length < 4500000) {
+        setSafeValue('knowledge_docs_cache', jsonStr);
+      }
+    } catch (e) {
+      console.warn('[DocParser] Could not cache documents to storage:', e);
+    }
+  }
+
+  function loadKnowledgeDocsFromStorage() {
+    try {
+      const raw = getSafeValue('knowledge_docs_cache', '');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          activeKnowledgeDocs = parsed;
+          console.log(`[Google Form AI HUD] Loaded ${activeKnowledgeDocs.length} cached study documents from local storage.`);
+        }
+      }
+    } catch (e) {}
+  }
+
+  function removeKnowledgeDoc(docId) {
+    activeKnowledgeDocs = activeKnowledgeDocs.filter(d => d.id !== docId);
+    saveKnowledgeDocsToStorage();
+    if (typeof updateHUDKnowledgeListFn === 'function') {
+      updateHUDKnowledgeListFn();
+    }
+    setStatus(`Removed document. Remaining: ${activeKnowledgeDocs.length} file(s).`);
+  }
+
+  function clearAllKnowledgeDocs() {
+    activeKnowledgeDocs = [];
+    setSafeValue('knowledge_docs_cache', '');
+    if (typeof updateHUDKnowledgeListFn === 'function') {
+      updateHUDKnowledgeListFn();
+    }
+    setStatus('🧹 Knowledge Base cleared. Study material folder emptied.');
+  }
+
+  // Ingestion handler for folder / files selection
+  async function handleSelectedDocumentFiles(fileList) {
+    if (!fileList || fileList.length === 0) return;
+    const supportedExts = ['.docx', '.doc', '.pptx', '.ppt', '.pdf', '.txt', '.md'];
+    const validFiles = Array.from(fileList).filter(f => {
+      const name = (f.name || '').toLowerCase();
+      return supportedExts.some(ext => name.endsWith(ext));
+    });
+
+    if (validFiles.length === 0) {
+      setStatus('⚠️ No supported files (.docx, .pdf, .ppt, .pptx) found in selection.');
+      return;
+    }
+
+    setStatus(`📂 Reading ${validFiles.length} file(s) from study folder...`);
+    let successCount = 0;
+
+    for (let i = 0; i < validFiles.length; i++) {
+      const f = validFiles[i];
+      try {
+        setStatus(`[${i + 1}/${validFiles.length}] 📖 Reading "${f.name}" (${Math.round(f.size / 1024)} KB)...`);
+        const parsedDoc = await parseDocumentFile(f);
+        const existingIdx = activeKnowledgeDocs.findIndex(d => d.name === parsedDoc.name);
+        if (existingIdx !== -1) {
+          activeKnowledgeDocs[existingIdx] = parsedDoc;
+        } else {
+          activeKnowledgeDocs.push(parsedDoc);
+        }
+        successCount++;
+      } catch (err) {
+        console.error('Failed to parse document:', f.name, err);
+        setStatus(`⚠️ Failed to parse "${f.name}": ${err.message}`);
+      }
+    }
+
+    saveKnowledgeDocsToStorage();
+    if (typeof updateHUDKnowledgeListFn === 'function') {
+      updateHUDKnowledgeListFn();
+    }
+
+    const totalWords = activeKnowledgeDocs.reduce((acc, d) => acc + (d.wordCount || 0), 0);
+    setStatus(`✅ Successfully indexed ${successCount} document(s)! Knowledge Base now has ${activeKnowledgeDocs.length} files (~${totalWords.toLocaleString()} words). Ready for Ground-Truth answering.`);
+  }
+
+  // Auto-Ingestion from Extension's dedicated "files/" folder (Zero Drag-and-Drop required)
+  async function loadFilesFromExtensionFolder(isManualTrigger = false) {
+    try {
+      if (isManualTrigger) {
+        setStatus('🔍 Scanning extension "files/" folder for study materials...');
+      }
+
+      let fileNames = [];
+
+      // 1. Try reading files/files.json via web_accessible_resources
+      try {
+        if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL) {
+          const jsonUrl = chrome.runtime.getURL('files/files.json');
+          const res = await fetch(jsonUrl, { cache: 'no-cache' });
+          if (res.ok) {
+            const list = await res.json();
+            if (Array.isArray(list) && list.length > 0) {
+              fileNames = list.filter(name => {
+                const lower = (name || '').toLowerCase();
+                return ['.docx', '.doc', '.pptx', '.ppt', '.pdf', '.txt', '.md'].some(ext => lower.endsWith(ext));
+              });
+            }
+          }
+        }
+      } catch (e) {}
+
+      // 2. Fallback to background service worker scan
+      if (fileNames.length === 0 && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+        try {
+          const bgRes = await new Promise((resolve) => {
+            chrome.runtime.sendMessage({ type: 'SCAN_EXTENSION_FILES' }, (resp) => {
+              if (chrome.runtime.lastError || !resp) resolve(null);
+              else resolve(resp);
+            });
+          });
+          if (bgRes && bgRes.ok && Array.isArray(bgRes.fileNames) && bgRes.fileNames.length > 0) {
+            fileNames = bgRes.fileNames;
+          }
+        } catch (e) {}
+      }
+
+      if (fileNames.length === 0) {
+        if (isManualTrigger) {
+          setStatus('⚠️ No study files found in "files/" folder. Place your .docx, .pdf, or .pptx files in files/ and run sync_files.bat.');
+        }
+        return;
+      }
+
+      let newlyLoaded = 0;
+      for (let i = 0; i < fileNames.length; i++) {
+        const fileName = fileNames[i];
+        try {
+          let arrayBuffer = null;
+          let fileSize = 0;
+
+          // Try direct fetch via web_accessible_resources
+          try {
+            const fileUrl = chrome.runtime.getURL('files/' + fileName);
+            const fileRes = await fetch(fileUrl, { cache: 'no-cache' });
+            if (fileRes.ok) {
+              arrayBuffer = await fileRes.arrayBuffer();
+              fileSize = arrayBuffer.byteLength;
+            }
+          } catch (e) {}
+
+          // Fallback via background script
+          if (!arrayBuffer && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+            const readRes = await new Promise((resolve) => {
+              chrome.runtime.sendMessage({ type: 'READ_EXTENSION_FILE', fileName }, (resp) => {
+                if (chrome.runtime.lastError || !resp) resolve(null);
+                else resolve(resp);
+              });
+            });
+            if (readRes && readRes.ok && readRes.base64) {
+              const binary = atob(readRes.base64);
+              const bytes = new Uint8Array(binary.length);
+              for (let b = 0; b < binary.length; b++) {
+                bytes[b] = binary.charCodeAt(b);
+              }
+              arrayBuffer = bytes.buffer;
+              fileSize = readRes.size || bytes.byteLength;
+            }
+          }
+
+          if (arrayBuffer && arrayBuffer.byteLength > 0) {
+            const parsedDoc = await parseDocumentFile({
+              name: fileName,
+              arrayBuffer,
+              size: fileSize
+            });
+            const existingIdx = activeKnowledgeDocs.findIndex(d => d.name === parsedDoc.name);
+            if (existingIdx !== -1) {
+              activeKnowledgeDocs[existingIdx] = parsedDoc;
+            } else {
+              activeKnowledgeDocs.push(parsedDoc);
+            }
+            newlyLoaded++;
+          }
+        } catch (fileErr) {
+          console.warn(`[Google Form AI HUD] Could not load "${fileName}" from files/ folder:`, fileErr);
+        }
+      }
+
+      if (newlyLoaded > 0) {
+        saveKnowledgeDocsToStorage();
+        if (typeof updateHUDKnowledgeListFn === 'function') {
+          updateHUDKnowledgeListFn();
+        }
+        const totalWords = activeKnowledgeDocs.reduce((acc, d) => acc + (d.wordCount || 0), 0);
+        console.log(`[Google Form AI HUD] Auto-loaded ${newlyLoaded} file(s) from "files/" folder (~${totalWords.toLocaleString()} words).`);
+        if (isManualTrigger) {
+          setStatus(`✅ Successfully synced ${newlyLoaded} file(s) from "files/" folder (~${totalWords.toLocaleString()} words). Knowledge Base active!`);
+        }
+      }
+    } catch (err) {
+      console.error('[Google Form AI HUD] loadFilesFromExtensionFolder failed:', err);
+    }
   }
 
   // 100% Token-Free Local Profile Store
@@ -876,107 +1824,123 @@
 
   // High-precision pattern detector for personal identity and survey metadata questions
   function matchUserProfile(title, description = '', profile = DEFAULT_USER_PROFILE) {
-    const text = `${title} ${description}`.toLowerCase().trim();
+    const rawText = `${title} ${description}`.trim();
+    const text = rawText.toLowerCase();
+
+    // Guard: If the question is an obvious general survey / opinion / quiz question, skip profile matching
+    if (/\b(what\s+do\s+you|how\s+do\s+you|why\s+do\s+you|which\s+of\s+the\s+following|select\s+all|rate\s+your|opinion\s+on|thoughts\s+on|evaluate|do\s+you\s+(think|agree|use|prefer|believe)|ano\s+ang\s+iyong\s+pananaw)\b/i.test(text)) {
+      return null;
+    }
 
     // 0. Combined Place and Date of Birth (Tempat, Tanggal Lahir / TTL)
     if (/\b(ttl|tempat\s*(dan|\/|,)?\s*tanggal\s*lahir|tempat\s*tgl\s*lahir|birth\s*place\s*and\s*date)\b/i.test(text)) {
-      const bCity = profile.birthplace || 'Jakarta';
+      const bCity = profile.birthplace || 'Quezon City';
       const bDate = profile.birthdate || '2003-08-15';
       return { field: 'birthplaceAndDate', value: `${bCity}, ${bDate}` };
     }
 
     // 1. Email Address
-    if (/\b(e-?mail|surel|email address|alamat email)\b/i.test(text)) {
+    if (/\b(your\s*e-?mail|e-?mail\s*address|alamat\s*email|surel|iyong\s*email)\b/i.test(text) ||
+        /^(e-?mail|email\s*address|surel)[\s:?*]*$/i.test(text)) {
       return { field: 'email', value: profile.email };
     }
 
     // 2. Emergency Contact
-    if (/\b(emergency\s*contact|kontak\s*darurat|nomor\s*darurat|emergency\s*phone)\b/i.test(text)) {
+    if (/\b(emergency\s*contact|kontak\s*darurat|nomor\s*darurat|emergency\s*phone|emergency\s*number)\b/i.test(text)) {
       return { field: 'emergencyContact', value: profile.emergencyContact };
     }
 
     // 3. Phone / WhatsApp / Mobile Number
-    if (/\b(phone|telepon|handphone|nomor hp|no hp|whatsapp|wa|mobile number|no telp|contact number|nomor telepon|no wa)\b/i.test(text)) {
+    if (/\b(phone\s*number|mobile\s*number|cellphone\s*number|contact\s*number|nomor\s*(hp|telepon|wa)|no\s*(hp|telp|wa)|whatsapp\s*number|numero\s*ng\s*telepono)\b/i.test(text) ||
+        /^(phone|telepon|handphone|nomor\s*hp|no\s*hp|whatsapp|wa|mobile)[\s:?*]*$/i.test(text)) {
       return { field: 'phone', value: profile.phone };
     }
 
     // 4. Nickname / Alias / Panggilan
-    if (/\b(nickname|nama\s*panggilan|alias|panggilan)\b/i.test(text)) {
+    if (/\b(nickname|nama\s*panggilan|alias|palayaw|iyong\s*palayaw)\b/i.test(text) ||
+        /^(nickname|alias|panggilan|palayaw)[\s:?*]*$/i.test(text)) {
       return { field: 'nickname', value: profile.nickname };
     }
 
     // 5. First Name
-    if (/\b(first\s*name|nama\s*depan|given\s*name|nama\s*pertama)\b/i.test(text)) {
+    if (/\b(first\s*name|nama\s*depan|given\s*name|nama\s*pertama|unang\s*pangalan)\b/i.test(text)) {
       return { field: 'firstName', value: profile.firstName };
     }
 
     // 6. Middle Name
-    if (/\b(middle\s*name|nama\s*tengah)\b/i.test(text)) {
+    if (/\b(middle\s*name|nama\s*tengah|gitnang\s*pangalan)\b/i.test(text)) {
       return { field: 'middleName', value: profile.middleName };
     }
 
     // 7. Last Name / Surname
-    if (/\b(last\s*name|surname|family\s*name|nama\s*belakang|nama\s*keluarga)\b/i.test(text)) {
+    if (/\b(last\s*name|surname|family\s*name|nama\s*belakang|nama\s*keluarga|apelyido)\b/i.test(text)) {
       return { field: 'lastName', value: profile.lastName };
     }
 
     // 8. Student ID / Employee ID / NIK / NIM / NPM / NISN
-    if (/\b(student\s*id|nim|npm|nisn|nomor\s*induk|id\s*karyawan|employee\s*id|nrp|nik|ktp|no\s*identitas|id\s*number)\b/i.test(text)) {
+    if (/\b(student\s*(id|no|num|number)|id\s*number|nim|npm|nisn|nomor\s*induk|id\s*karyawan|employee\s*id|nrp|nik|ktp|no\s*identitas|id\s*ng\s*mag-aaral)\b/i.test(text)) {
       return { field: 'studentId', value: profile.studentId };
     }
 
-    // 9. Faculty / Major / Program of Study
-    if (/\b(major|jurusan|program\s*studi|prodi|faculty|fakultas|departemen|department|bidang\s*studi)\b/i.test(text)) {
+    // 9. Faculty / Major / Program of Study / Course
+    if (/\b(your\s*(major|course|program|degree|faculty|department)|what\s*is\s*your\s*(major|course|program)|course\s*\/\s*major|major\s*\/\s*course|degree\s*program|program\s*studi|nama\s*jurusan|asal\s*jurusan|anong\s*kurso|field\s*of\s*study)\b/i.test(text) ||
+        /^(major|course|kurso|jurusan|prodi|program\s*studi|fakultas|faculty)[\s:?*]*$/i.test(text)) {
       return { field: 'facultyOrMajor', value: profile.facultyOrMajor };
     }
 
     // 10. School / University / Campus / Organization / Workplace
-    if (/\b(school|university|universitas|sekolah|kampus|institusi|institution|nama\s*sekolah|asal\s*sekolah|nama\s*kampus|perguruan\s*tinggi|instansi|organisasi|organization|workplace|tempat\s*kerja|perusahaan|company)\b/i.test(text)) {
+    if (/\b(your\s*(school|university|campus|college|institution|workplace|company|organization)|name\s*of\s*(school|university|campus|college|institution|company)|school\s*\/\s*university|school\s*name|university\s*name|nama\s*(sekolah|kampus|universitas|perguruan\s*tinggi|instansi|organisasi|perusahaan)|asal\s*(sekolah|kampus|universitas)|anong\s*(paaralan|pamantasan|unibersidad)|paaralan\s*\/\s*pamantasan|pangalan\s*ng\s*(paaralan|pamantasan|unibersidad)|school\s*or\s*university|current\s*school|current\s*university)\b/i.test(text) ||
+        /^(school|university|campus|college|institution|sekolah|kampus|universitas|asal\s*sekolah|nama\s*kampus|paaralan|pamantasan|unibersidad)[\s:?*]*$/i.test(text)) {
       return { field: 'schoolOrOrg', value: profile.schoolOrOrg };
     }
 
     // 11. Occupation / Job / Profession
-    if (/\b(occupation|pekerjaan|profesi|job|job\s*title|status\s*pekerjaan|bidang\s*pekerjaan)\b/i.test(text)) {
+    if (/\b(your\s*(occupation|job|profession)|current\s*(occupation|job)|pekerjaan\s*anda|profesi\s*anda|hanapbuhay|trabaho\s*mo)\b/i.test(text) ||
+        /^(occupation|pekerjaan|profesi|trabaho|hanapbuhay)[\s:?*]*$/i.test(text)) {
       return { field: 'occupation', value: profile.occupation };
     }
 
     // 12. Religion / Agama
-    if (/\b(religion|agama|kepercayaan)\b/i.test(text)) {
+    if (/\b(your\s*religion|agama\s*anda|relihiyon|iyong\s*relihiyon)\b/i.test(text) ||
+        /^(religion|agama|relihiyon)[\s:?*]*$/i.test(text)) {
       return { field: 'religion', value: profile.religion };
     }
 
     // 13. Marital Status
-    if (/\b(marital\s*status|status\s*pernikahan|status\s*kawin|status\s*perkawinan)\b/i.test(text)) {
+    if (/\b(marital\s*status|status\s*pernikahan|status\s*kawin|status\s*perkawinan|katayuang\s*sibil|civil\s*status)\b/i.test(text)) {
       return { field: 'maritalStatus', value: profile.maritalStatus };
     }
 
     // 14. Nationality / Citizenship
-    if (/\b(nationality|kebangsaan|kewarganegaraan|citizenship|status\s*kewarganegaraan)\b/i.test(text)) {
+    if (/\b(nationality|citizenship|kewarganegaraan|kebangsaan|nasyonalidad|pagkamamamayan)\b/i.test(text)) {
       return { field: 'nationality', value: profile.nationality };
     }
 
     // 15. Place of Birth / Tempat Lahir
-    if (/\b(place\s*of\s*birth|tempat\s*lahir|birth\s*place|kota\s*kelahiran)\b/i.test(text)) {
+    if (/\b(place\s*of\s*birth|birth\s*place|tempat\s*lahir|kota\s*kelahiran|lugar\s*ng\s*kapanganakan)\b/i.test(text)) {
       return { field: 'birthplace', value: profile.birthplace };
     }
 
     // 16. Birthdate / Date of Birth
-    if (/\b(birth\s*date|date\s*of\s*birth|tanggal\s*lahir|tgl\s*lahir|birthdate|dob|born\s*on)\b/i.test(text)) {
+    if (/\b(birth\s*date|date\s*of\s*birth|tanggal\s*lahir|tgl\s*lahir|birthdate|dob|petsa\s*ng\s*kapanganakan)\b/i.test(text)) {
       return { field: 'birthdate', value: profile.birthdate };
     }
 
     // 17. Age / Usia / Umur
-    if (/\b(age|usia|umur|how\s*old)\b/i.test(text) && !/\b(range|kategori|rentang)\b/i.test(text)) {
+    if ((/\b(your\s*age|how\s*old\s*are\s*you|usia\s*anda|umur\s*anda|ilang\s*taon\s*ka|exact\s*age)\b/i.test(text) ||
+         /^(age|usia|umur|edad)[\s:?*]*$/i.test(text)) &&
+        !/\b(range|kategori|rentang|bracket|group|average)\b/i.test(text)) {
       return { field: 'age', value: profile.age };
     }
 
     // 18. Gender / Sex
-    if (/\b(gender|jenis\s*kelamin|sex|kelamin)\b/i.test(text)) {
+    if (/\b(your\s*(gender|sex)|jenis\s*kelamin|kasarian)\b/i.test(text) ||
+        /^(gender|sex|jenis\s*kelamin|kasarian)[\s:?*]*$/i.test(text)) {
       return { field: 'gender', value: profile.gender };
     }
 
     // 19. Blood Type / Golongan Darah
-    if (/\b(blood\s*type|golongan\s*darah|goldar|blood\s*group|tipe\s*darah)\b/i.test(text)) {
+    if (/\b(blood\s*type|golongan\s*darah|goldar|blood\s*group|tipe\s*darah|uri\s*ng\s*dugo)\b/i.test(text)) {
       return { field: 'bloodType', value: profile.bloodType };
     }
 
@@ -986,53 +1950,62 @@
     }
 
     // 21. Province / State
-    if (/\b(province|provinsi|state|wilayah\s*provinsi)\b/i.test(text)) {
+    if (/\b(your\s*(province|state)|province\s*of\s*residence|provinsi\s*tempat\s*tinggal|lalawigan)\b/i.test(text) ||
+        /^(province|provinsi|lalawigan)[\s:?*]*$/i.test(text)) {
       return { field: 'provinceOrState', value: profile.provinceOrState };
     }
 
     // 22. City / Kota
-    if (/\b(city|kota|kabupaten|asal\s*kota|kota\s*asal|kota\s*domisili|kota\s*tempat\s*tinggal)\b/i.test(text)) {
+    if (/\b(your\s*city|city\s*of\s*residence|current\s*city|kota\s*domisili|kota\s*tempat\s*tinggal|lungsod)\b/i.test(text) ||
+        /^(city|kota|kabupaten|lungsod)[\s:?*]*$/i.test(text)) {
       return { field: 'city', value: profile.city };
     }
 
     // 23. Country / Negara
-    if (/\b(country|negara|asal\s*negara)\b/i.test(text)) {
+    if (/\b(your\s*country|country\s*of\s*(origin|residence)|negara\s*asal|bansang\s*pinagmulan)\b/i.test(text) ||
+        /^(country|negara|bansa)[\s:?*]*$/i.test(text)) {
       return { field: 'country', value: profile.country };
     }
 
     // 24. Address / Domisili / Tempat Tinggal
-    if (/\b(address|alamat|alamat\s*rumah|domisili|street\s*address|residential\s*address|tempat\s*tinggal|alamat\s*lengkap|alamat\s*domisili)\b/i.test(text)) {
+    if (/\b(home\s*address|street\s*address|residential\s*address|current\s*address|alamat\s*lengkap|alamat\s*rumah|alamat\s*domisili|buong\s*tirahan)\b/i.test(text) ||
+        /^(address|alamat|tirahan)[\s:?*]*$/i.test(text)) {
       return { field: 'address', value: profile.address };
     }
 
     // 25. Hobby / Interest
-    if (/\b(hobby|hobi|kegemaran|minat|interest)\b/i.test(text)) {
+    if (/\b(your\s*(hobby|hobbies)|hobi\s*anda|mga\s*hilig)\b/i.test(text) ||
+        /^(hobby|hobbies|hobi)[\s:?*]*$/i.test(text)) {
       return { field: 'hobby', value: profile.hobby };
     }
 
     // 26. Social Media / LinkedIn / Instagram
-    if (/\b(linkedin|social\s*media|media\s*sosial|instagram|sosmed|twitter|tiktok)\b/i.test(text)) {
+    if (/\b(your\s*(social\s*media|linkedin|instagram|twitter|tiktok)|social\s*media\s*account|link\s*profil\s*(linkedin|instagram))\b/i.test(text) ||
+        /^(linkedin|social\s*media|instagram|twitter)[\s:?*]*$/i.test(text)) {
       return { field: 'socialMedia', value: profile.socialMedia };
     }
 
     // 27. Full Name
-    if (/\b(full\s*name|nama\s*lengkap|complete\s*name|nama\s*anda|your\s*name|nama\s*siswa|nama\s*mahasiswa|nama\s*peserta|nama\s*kandidat|nama\s*responden|pangalan|buong\s*pangalan|iyong\s*pangalan|pangalan\s*ng\s*mag-aaral|pangalan\s*ng\s*estudyante)\b/i.test(text) ||
-        (/\b(nama|name|pangalan)\b/i.test(text) && !/\b(ayah|ibu|father|mother|parent|orang\s*tua|perusahaan|company|sekolah|school|kampus|campus|universit|organisa|organiza|institu|wali|guardian|produk|product|project|mata\s*kuliah|pelajaran|course)\b/i.test(text))) {
+    if (/\b(full\s*name|nama\s*lengkap|complete\s*name|nama\s*anda|your\s*name|nama\s*siswa|nama\s*mahasiswa|nama\s*peserta|nama\s*kandidat|nama\s*responden|buong\s*pangalan|iyong\s*pangalan|pangalan\s*ng\s*mag-aaral|pangalan\s*ng\s*estudyante)\b/i.test(text) ||
+        /^(name|nama|pangalan|full\s*name|complete\s*name|nama\s*lengkap|buong\s*pangalan)[\s:?*]*$/i.test(text)) {
       return { field: 'fullName', value: profile.fullName };
     }
 
     // 28. Year Level / Academic Year / Tingkat Kuliah / Grade Level
-    if (/\b(year\s*level|academic\s*year|current\s*year|year\s*of\s*study|class\s*of|tingkat|tahun\s*ke|grade\s*level|tingkat\s*kuliah|jenjang\s*tahun|tahun\s*kuliah)\b/i.test(text)) {
+    if (/\b(year\s*level|academic\s*year|current\s*year\s*level|year\s*of\s*study|tingkat\s*kuliah|antay\s*o\s*taon)\b/i.test(text) ||
+        /^(year\s*level|academic\s*year|tingkat)[\s:?*]*$/i.test(text)) {
       return { field: 'yearLevel', value: profile.yearLevel };
     }
 
     // 29. Semester
-    if (/\b(semester|sem)\b/i.test(text)) {
+    if (/\b(current\s*semester|semester\s*sa\s*kasalukuyan)\b/i.test(text) ||
+        /^(semester|sem)[\s:?*]*$/i.test(text)) {
       return { field: 'semester', value: profile.semester };
     }
 
     // 30. Batch Year / Tahun Angkatan / Tahun Masuk
-    if (/\b(angkatan|tahun\s*masuk|batch\s*year|entry\s*year|cohort)\b/i.test(text)) {
+    if (/\b(tahun\s*angkatan|tahun\s*masuk|batch\s*year|entry\s*year|cohort)\b/i.test(text) ||
+        /^(angkatan|batch\s*year)[\s:?*]*$/i.test(text)) {
       return { field: 'batchYear', value: profile.batchYear };
     }
 
@@ -1150,7 +2123,8 @@
     const vLower = v.toLowerCase();
     for (let i = 0; i < options.length; i++) {
       const opt = options[i].trim().toLowerCase();
-      if (opt === vLower || opt.includes(vLower) || vLower.includes(opt)) {
+      if (!opt || opt === 'choose' || opt === 'pilih' || opt === 'select' || /\b(other|lainnya|lain|iba|otro|autre|sonstiges)\b/i.test(opt)) continue;
+      if (opt.length >= 3 && (opt === vLower || opt.includes(vLower) || (vLower.length >= 4 && vLower.includes(opt)))) {
         return i;
       }
     }
@@ -1225,10 +2199,26 @@
     }
   }
 
-  // Safe HTTP request helper (uses Chrome Extension background service worker or direct fetch fallback)
+  // Safe HTTP request helper with adaptive 45s timeout for mobile/cellular networks
   function httpRequest(options) {
+    const timeoutMs = options.timeout || 45000;
     return new Promise((resolve, reject) => {
-      // 1. Chrome Extension (Manifest V3) environment with background service worker
+      // 1. Userscript environment with GM_xmlhttpRequest
+      if (typeof GM_xmlhttpRequest === 'function') {
+        try {
+          return GM_xmlhttpRequest({
+            ...options,
+            timeout: timeoutMs,
+            onload: resolve,
+            onerror: reject,
+            ontimeout: () => reject(new Error('Request timed out (' + Math.round(timeoutMs / 1000) + 's)'))
+          });
+        } catch (e) {
+          console.warn('[Google Form AI HUD] GM_xmlhttpRequest failed:', e);
+        }
+      }
+
+      // 2. Chrome Extension (Manifest V3) environment with background service worker
       if (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.sendMessage === 'function') {
         try {
           const fetchOpts = {
@@ -1242,7 +2232,8 @@
           chrome.runtime.sendMessage({
             type: 'FETCH',
             url: options.url,
-            options: fetchOpts
+            options: fetchOpts,
+            timeout: timeoutMs
           }, (res) => {
             if (chrome.runtime.lastError || !res) {
               // Service worker might be sleeping or not responding, fallback to direct fetch
@@ -1264,15 +2255,20 @@
         }
       }
 
-      // 2. Fallback direct fetch
+      // 3. Fallback direct fetch with AbortController timeout
       doDirectFetch(options, resolve, reject);
     });
   }
 
   function doDirectFetch(options, resolve, reject) {
+    const timeoutMs = options.timeout || 45000;
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutTimer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+
     const fetchOpts = {
       method: options.method || 'GET',
-      headers: options.headers || {}
+      headers: options.headers || {},
+      signal: controller ? controller.signal : undefined
     };
     if (options.data) {
       fetchOpts.body = options.data;
@@ -1280,6 +2276,7 @@
 
     fetch(options.url, fetchOpts)
       .then(async (res) => {
+        if (timeoutTimer) clearTimeout(timeoutTimer);
         if (options.responseType === 'blob') {
           const blob = await res.blob();
           resolve({ status: res.status, statusText: res.statusText, response: blob });
@@ -1288,7 +2285,10 @@
           resolve({ status: res.status, statusText: res.statusText, responseText: text });
         }
       })
-      .catch(err => reject(new Error(err.message || 'Network fetch error')));
+      .catch((err) => {
+        if (timeoutTimer) clearTimeout(timeoutTimer);
+        reject(new Error(err.name === 'AbortError' ? ('Request timed out (' + Math.round(timeoutMs / 1000) + 's)') : (err.message || 'Network fetch error')));
+      });
   }
 
   function sleep(ms) {
@@ -1364,10 +2364,12 @@
       const newTop = element.offsetTop - pos2;
       const newLeft = element.offsetLeft - pos1;
 
-      const maxTop = Math.max(10, window.innerHeight - (element.offsetHeight || 100) - 10);
-      const maxLeft = Math.max(10, window.innerWidth - (element.offsetWidth || 100) - 10);
-      const clampedTop = Math.min(Math.max(10, newTop), Math.max(10, maxTop));
-      const clampedLeft = Math.min(Math.max(10, newLeft), Math.max(10, maxLeft));
+      const vpW = window.visualViewport ? window.visualViewport.width : window.innerWidth;
+      const vpH = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+      const maxTop = Math.max(8, vpH - (element.offsetHeight || 100) - 8);
+      const maxLeft = Math.max(8, vpW - (element.offsetWidth || 100) - 8);
+      const clampedTop = Math.min(Math.max(8, newTop), Math.max(8, maxTop));
+      const clampedLeft = Math.min(Math.max(8, newLeft), Math.max(8, maxLeft));
 
       element.style.setProperty('top', clampedTop + 'px', 'important');
       element.style.setProperty('left', clampedLeft + 'px', 'important');
@@ -1400,23 +2402,17 @@
       hudPanel.style.setProperty('display', 'none', 'important');
       hudFloatingButton.style.setProperty('display', 'flex', 'important');
       const curS = getStealthSettings();
-      if (!hasConfiguredApiKey()) {
-        hudFloatingButton.style.opacity = '1';
-        hudFloatingButton.style.fontSize = '20px';
-      } else {
-        hudFloatingButton.style.opacity = curS.opacity;
-        hudFloatingButton.style.fontSize = (curS.opacity === '0') ? '0px' : '20px';
-      }
+      hudFloatingButton.style.opacity = curS.opacity;
       hudFloatingButton.style.background = curS.bg;
       hudFloatingButton.style.color = curS.color;
       hudFloatingButton.style.border = curS.border;
       hudFloatingButton.style.boxShadow = curS.shadow;
-      updateFloatingButtonBadge();
+      hudFloatingButton.style.fontSize = (curS.opacity === '0') ? '0px' : '20px';
       hudContainer.title = '';
       hudContainer.style.setProperty('top', 'auto', 'important');
       hudContainer.style.setProperty('left', 'auto', 'important');
-      hudContainer.style.setProperty('bottom', '24px', 'important');
-      hudContainer.style.setProperty('right', '24px', 'important');
+      hudContainer.style.setProperty('bottom', 'max(16px, env(safe-area-inset-bottom, 16px))', 'important');
+      hudContainer.style.setProperty('right', 'max(16px, env(safe-area-inset-right, 16px))', 'important');
       hudContainer.style.setProperty('width', 'auto', 'important');
       hudContainer.style.setProperty('height', 'auto', 'important');
       hudContainer.style.setProperty('background', 'transparent', 'important');
@@ -1433,18 +2429,18 @@
       hudFloatingButton.style.setProperty('display', 'none', 'important');
       hudPanel.style.setProperty('display', 'flex', 'important');
       hudContainer.title = '';
-      hudContainer.style.setProperty('top', '16px', 'important');
+      hudContainer.style.setProperty('top', 'max(12px, env(safe-area-inset-top, 12px))', 'important');
       hudContainer.style.setProperty('bottom', 'auto', 'important');
-      if (typeof window !== 'undefined' && window.innerWidth < 420) {
-        hudContainer.style.setProperty('left', '10px', 'important');
-        hudContainer.style.setProperty('right', '10px', 'important');
-        hudContainer.style.setProperty('width', 'calc(100vw - 20px)', 'important');
-        hudContainer.style.setProperty('max-width', 'calc(100vw - 20px)', 'important');
+      if (typeof window !== 'undefined' && window.innerWidth <= 480) {
+        hudContainer.style.setProperty('left', 'max(8px, env(safe-area-inset-left, 8px))', 'important');
+        hudContainer.style.setProperty('right', 'max(8px, env(safe-area-inset-right, 8px))', 'important');
+        hudContainer.style.setProperty('width', 'calc(100vw - 16px)', 'important');
+        hudContainer.style.setProperty('max-width', 'calc(100vw - 16px)', 'important');
       } else {
         hudContainer.style.setProperty('left', 'auto', 'important');
-        hudContainer.style.setProperty('right', '16px', 'important');
-        hudContainer.style.setProperty('width', '350px', 'important');
-        hudContainer.style.setProperty('max-width', 'calc(100vw - 32px)', 'important');
+        hudContainer.style.setProperty('right', 'max(16px, env(safe-area-inset-right, 16px))', 'important');
+        hudContainer.style.setProperty('width', '360px', 'important');
+        hudContainer.style.setProperty('max-width', 'calc(100vw - 20px)', 'important');
       }
       hudContainer.style.setProperty('height', 'auto', 'important');
       hudContainer.style.setProperty('visibility', 'visible', 'important');
@@ -1456,7 +2452,9 @@
   }
 
   function getStealthSettings() {
-    const level = getSafeValue('hud_stealth_level', 'phantom');
+    const isMobileDevice = typeof window !== 'undefined' && (('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || window.innerWidth <= 480);
+    const defaultStealth = isMobileDevice ? 'subtle' : 'phantom';
+    const level = getSafeValue('hud_stealth_level', defaultStealth);
     if (level === 'phantom' || level === 'invisible') {
       return {
         opacity: '0',
@@ -1519,6 +2517,8 @@
       bg: '#2563eb',
       color: '#ffffff',
       border: '2px solid #60a5fa',
+      shadow: '0 4px 18px rgba(37, 99, 235, 0.7)',
+      hoverOpacity: '1',
       hoverBg: '#2563eb',
       hoverColor: '#ffffff',
       hoverBorder: '2px solid #60a5fa',
@@ -1526,429 +2526,6 @@
     };
   }
 
-  // Inject CSS animations for modal and alert badge
-  try {
-    const styleEl = document.createElement('style');
-    styleEl.id = 'ai-form-hud-styles';
-    styleEl.textContent = `
-      @keyframes aiPulse {
-        0%, 100% { transform: scale(1); opacity: 1; }
-        50% { transform: scale(1.25); opacity: 0.75; }
-      }
-      @keyframes aiFadeIn {
-        from { opacity: 0; transform: scale(0.96); }
-        to { opacity: 1; transform: scale(1); }
-      }
-    `;
-    (document.head || document.documentElement).appendChild(styleEl);
-  } catch (e) {}
-
-  function hasConfiguredApiKey() {
-    const savedProv = getSafeValue('ai_provider', DEFAULT_PROVIDER);
-    const prov = PROVIDERS[savedProv] || PROVIDERS.gemini;
-    const activeKey = (getSafeValue(`${prov.id}_api_key`, prov.defaultKey || '')).trim();
-    if (activeKey) return true;
-    return Object.keys(PROVIDERS).some(pid => (getSafeValue(`${pid}_api_key`, '')).trim().length > 0);
-  }
-
-  function updateFloatingButtonBadge() {
-    if (!hudFloatingButton) return;
-    let badge = document.getElementById('ai-btn-alert-badge');
-    const hasKey = hasConfiguredApiKey();
-    if (!hasKey) {
-      if (!badge) {
-        badge = document.createElement('span');
-        badge.id = 'ai-btn-alert-badge';
-        badge.style.cssText = `
-          position: absolute !important;
-          top: -2px !important;
-          right: -2px !important;
-          width: 12px !important;
-          height: 12px !important;
-          background: #f59e0b !important;
-          border-radius: 50% !important;
-          border: 2px solid #0f172a !important;
-          box-shadow: 0 0 10px #f59e0b !important;
-          pointer-events: none !important;
-          animation: aiPulse 1.6s infinite ease-in-out !important;
-        `;
-        hudFloatingButton.style.position = 'relative';
-        hudFloatingButton.appendChild(badge);
-      }
-      hudFloatingButton.title = '⚡ Google Form AI: Setup your API key to start solving (Alt+H or F2)';
-    } else {
-      if (badge && badge.parentElement) {
-        badge.parentElement.removeChild(badge);
-      }
-      hudFloatingButton.title = '⚡ Open Google Form AI Assistant (Alt+H or F2)';
-    }
-  }
-
-  function showToastNotification(message, isSuccess = true) {
-    let container = document.getElementById('ai-toast-container');
-    if (!container) {
-      container = document.createElement('div');
-      container.id = 'ai-toast-container';
-      container.style.cssText = `
-        position: fixed !important;
-        top: 24px !important;
-        right: 24px !important;
-        z-index: 2147483647 !important;
-        display: flex !important;
-        flex-direction: column !important;
-        gap: 8px !important;
-        pointer-events: none !important;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-      `;
-      (document.body || document.documentElement).appendChild(container);
-    }
-
-    const toast = document.createElement('div');
-    toast.style.cssText = `
-      background: ${isSuccess ? '#064e3b' : '#7f1d1d'} !important;
-      color: #ffffff !important;
-      padding: 12px 18px !important;
-      border-radius: 8px !important;
-      font-size: 13px !important;
-      font-weight: 600 !important;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.5) !important;
-      border: 1px solid ${isSuccess ? '#10b981' : '#ef4444'} !important;
-      display: flex !important;
-      align-items: center !important;
-      gap: 10px !important;
-      max-width: 420px !important;
-      pointer-events: auto !important;
-      opacity: 0 !important;
-      transform: translateY(-10px) !important;
-      transition: opacity 0.2s ease, transform 0.2s ease !important;
-      box-sizing: border-box !important;
-    `;
-    toast.textContent = message;
-    container.appendChild(toast);
-
-    requestAnimationFrame(() => {
-      toast.style.opacity = '1';
-      toast.style.transform = 'translateY(0)';
-    });
-
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      toast.style.transform = 'translateY(-10px)';
-      setTimeout(() => {
-        if (toast.parentElement) toast.parentElement.removeChild(toast);
-      }, 250);
-    }, 4500);
-  }
-
-  function showApiKeyOnboardingModal(force = false) {
-    if (!force) {
-      if (hasConfiguredApiKey()) return;
-      if (sessionStorage.getItem('ai_hud_onboarding_dismissed') === '1') return;
-    }
-
-    if (document.getElementById('ai-onboarding-overlay')) {
-      const existingKeyInput = document.getElementById('ai-onboard-key-input');
-      if (existingKeyInput) existingKeyInput.focus();
-      return;
-    }
-
-    const overlay = document.createElement('div');
-    overlay.id = 'ai-onboarding-overlay';
-    overlay.style.cssText = `
-      position: fixed !important;
-      inset: 0 !important;
-      background: rgba(15, 23, 42, 0.85) !important;
-      backdrop-filter: blur(8px) !important;
-      -webkit-backdrop-filter: blur(8px) !important;
-      z-index: 2147483647 !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      padding: 16px !important;
-      box-sizing: border-box !important;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-      color: #f8fafc !important;
-      animation: aiFadeIn 0.2s ease-out !important;
-    `;
-
-    const modal = document.createElement('div');
-    modal.style.cssText = `
-      width: 100% !important;
-      max-width: 520px !important;
-      background: #0f172a !important;
-      border: 1.5px solid #3b82f6 !important;
-      border-radius: 16px !important;
-      box-shadow: 0 25px 60px -12px rgba(0, 0, 0, 0.85), 0 0 35px rgba(59, 130, 246, 0.3) !important;
-      padding: 24px !important;
-      box-sizing: border-box !important;
-      display: flex !important;
-      flex-direction: column !important;
-      gap: 16px !important;
-      position: relative !important;
-      max-height: min(90vh, 720px) !important;
-      overflow-y: auto !important;
-    `;
-
-    // Header row
-    const headerRow = document.createElement('div');
-    headerRow.style.cssText = 'display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;';
-
-    const headerLeft = document.createElement('div');
-    const badge = document.createElement('div');
-    badge.textContent = '⚡ GOOGLE FORMS UNIVERSAL AI ASSISTANT';
-    badge.style.cssText = 'font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: #38bdf8; margin-bottom: 4px;';
-    const title = document.createElement('h2');
-    title.textContent = '🔑 API Key Required to Solve';
-    title.style.cssText = 'font-size: 20px; font-weight: 800; margin: 0; color: #ffffff; line-height: 1.25;';
-    headerLeft.appendChild(badge);
-    headerLeft.appendChild(title);
-
-    const closeBtn = document.createElement('button');
-    closeBtn.textContent = '✕';
-    closeBtn.title = 'Dismiss';
-    closeBtn.style.cssText = 'background: rgba(255,255,255,0.08); border: none; color: #94a3b8; font-size: 16px; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.15s; flex-shrink: 0;';
-    closeBtn.onmouseover = () => { closeBtn.style.background = 'rgba(255,255,255,0.18)'; closeBtn.style.color = '#ffffff'; };
-    closeBtn.onmouseout = () => { closeBtn.style.background = 'rgba(255,255,255,0.08)'; closeBtn.style.color = '#94a3b8'; };
-    closeBtn.onclick = () => {
-      sessionStorage.setItem('ai_hud_onboarding_dismissed', '1');
-      if (overlay.parentElement) overlay.parentElement.removeChild(overlay);
-    };
-
-    headerRow.appendChild(headerLeft);
-    headerRow.appendChild(closeBtn);
-
-    const desc = document.createElement('p');
-    desc.textContent = 'To solve Google Forms questions autonomously using AI reasoning and vision, please connect your AI provider. Your key is stored securely in your browser\'s local storage and is never transmitted to any third party.';
-    desc.style.cssText = 'font-size: 13px; line-height: 1.5; color: #cbd5e1; margin: 0;';
-
-    // Primary Provider Spotlight Card (Google Gemini)
-    const providerCard = document.createElement('div');
-    providerCard.style.cssText = `
-      background: linear-gradient(135deg, rgba(37, 99, 235, 0.2), rgba(99, 102, 241, 0.22)) !important;
-      border: 1.5px solid #3b82f6 !important;
-      border-radius: 12px !important;
-      padding: 16px !important;
-      display: flex !important;
-      flex-direction: column !important;
-      gap: 10px !important;
-    `;
-
-    const cardBadge = document.createElement('div');
-    cardBadge.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; background: rgba(59, 130, 246, 0.25); color: #60a5fa; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 4px; align-self: flex-start;';
-    cardBadge.textContent = '🌟 PRIMARY AI PROVIDER (RECOMMENDED)';
-
-    const cardTitle = document.createElement('div');
-    cardTitle.id = 'ai-modal-provider-name';
-    cardTitle.textContent = 'Google Gemini (Google AI Studio)';
-    cardTitle.style.cssText = 'font-size: 16px; font-weight: 700; color: #ffffff;';
-
-    const cardBenefits = document.createElement('ul');
-    cardBenefits.id = 'ai-modal-benefits';
-    cardBenefits.style.cssText = 'margin: 0; padding-left: 18px; font-size: 12px; color: #e2e8f0; line-height: 1.6;';
-    cardBenefits.innerHTML = `
-      <li><strong>100% Free</strong>: Free tier with your Google account (no credit card needed)</li>
-      <li><strong>Multimodal Vision</strong>: Reads image questions, diagrams, and math formulas</li>
-      <li><strong>Blazing Fast</strong>: Gemini 2.5 Flash with deep reasoning capability</li>
-    `;
-
-    const getPrimaryLink = document.createElement('a');
-    getPrimaryLink.id = 'ai-modal-get-key-cta';
-    getPrimaryLink.href = 'https://aistudio.google.com/app/apikey';
-    getPrimaryLink.target = '_blank';
-    getPrimaryLink.rel = 'noopener noreferrer';
-    getPrimaryLink.style.cssText = `
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      gap: 8px !important;
-      background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
-      color: #ffffff !important;
-      padding: 11px 16px !important;
-      border-radius: 8px !important;
-      font-weight: 700 !important;
-      font-size: 14px !important;
-      text-decoration: none !important;
-      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.45) !important;
-      transition: transform 0.15s, box-shadow 0.15s !important;
-      cursor: pointer !important;
-    `;
-    getPrimaryLink.innerHTML = '<span>🔑 Get Free Gemini API Key (Google AI Studio) ↗</span>';
-    getPrimaryLink.onmouseover = () => { getPrimaryLink.style.transform = 'scale(1.02)'; getPrimaryLink.style.boxShadow = '0 6px 20px rgba(37, 99, 235, 0.65)'; };
-    getPrimaryLink.onmouseout = () => { getPrimaryLink.style.transform = 'scale(1)'; getPrimaryLink.style.boxShadow = '0 4px 14px rgba(37, 99, 235, 0.45)'; };
-
-    providerCard.appendChild(cardBadge);
-    providerCard.appendChild(cardTitle);
-    providerCard.appendChild(cardBenefits);
-    providerCard.appendChild(getPrimaryLink);
-
-    // Quick Activation Form
-    const formSection = document.createElement('div');
-    formSection.style.cssText = 'display: flex; flex-direction: column; gap: 10px; margin-top: 4px;';
-
-    const provRow = document.createElement('div');
-    provRow.style.cssText = 'display: flex; flex-direction: column; gap: 4px;';
-    const provLabel = document.createElement('label');
-    provLabel.textContent = 'Select AI Provider';
-    provLabel.style.cssText = 'font-size: 11px; font-weight: 600; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.05em;';
-    const modalProvSelect = document.createElement('select');
-    modalProvSelect.id = 'ai-modal-prov-select';
-    modalProvSelect.style.cssText = 'background: #1e293b; border: 1.5px solid #3b82f6; color: #f8fafc; padding: 8px 10px; border-radius: 6px; font-size: 13px; font-weight: 600; outline: none; cursor: pointer;';
-    Object.values(PROVIDERS).forEach(p => {
-      const opt = document.createElement('option');
-      opt.value = p.id;
-      opt.textContent = p.name;
-      modalProvSelect.appendChild(opt);
-    });
-    modalProvSelect.value = getSafeValue('ai_provider', DEFAULT_PROVIDER);
-
-    provRow.appendChild(provLabel);
-    provRow.appendChild(modalProvSelect);
-
-    const keyRow = document.createElement('div');
-    keyRow.style.cssText = 'display: flex; flex-direction: column; gap: 4px;';
-    const keyLabelRow = document.createElement('div');
-    keyLabelRow.style.cssText = 'display: flex; justify-content: space-between; align-items: center;';
-    const keyLabel = document.createElement('label');
-    keyLabel.textContent = 'Paste API Key';
-    keyLabel.style.cssText = 'font-size: 11px; font-weight: 600; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.05em;';
-    const keyQuickLink = document.createElement('a');
-    keyQuickLink.id = 'ai-modal-sublink';
-    keyQuickLink.href = 'https://aistudio.google.com/app/apikey';
-    keyQuickLink.target = '_blank';
-    keyQuickLink.rel = 'noopener noreferrer';
-    keyQuickLink.textContent = 'Open Key Portal ↗';
-    keyQuickLink.style.cssText = 'font-size: 11px; color: #38bdf8; text-decoration: none; font-weight: 600;';
-    keyLabelRow.appendChild(keyLabel);
-    keyLabelRow.appendChild(keyQuickLink);
-
-    const inputWrapper = document.createElement('div');
-    inputWrapper.style.cssText = 'position: relative; display: flex; align-items: center;';
-
-    const keyInput = document.createElement('input');
-    keyInput.id = 'ai-onboard-key-input';
-    keyInput.type = 'password';
-    keyInput.placeholder = 'Paste your API key here (e.g., AIzaSy... or gsk_...)';
-    keyInput.style.cssText = 'background: #1e293b; border: 1.5px solid #475569; color: #f8fafc; padding: 10px 42px 10px 12px; border-radius: 8px; width: 100%; box-sizing: border-box; font-size: 14px; outline: none; transition: border-color 0.2s;';
-    keyInput.onfocus = () => { keyInput.style.borderColor = '#3b82f6'; };
-    keyInput.onblur = () => { keyInput.style.borderColor = '#475569'; };
-
-    const eyeToggle = document.createElement('button');
-    eyeToggle.type = 'button';
-    eyeToggle.textContent = '👁️';
-    eyeToggle.title = 'Show / Hide API key';
-    eyeToggle.style.cssText = 'position: absolute; right: 8px; background: none; border: none; font-size: 15px; cursor: pointer; opacity: 0.7; padding: 4px;';
-    eyeToggle.onclick = () => {
-      keyInput.type = keyInput.type === 'password' ? 'text' : 'password';
-    };
-
-    inputWrapper.appendChild(keyInput);
-    inputWrapper.appendChild(eyeToggle);
-
-    keyRow.appendChild(keyLabelRow);
-    keyRow.appendChild(inputWrapper);
-
-    // Dynamic updates when switching provider in modal
-    modalProvSelect.addEventListener('change', () => {
-      const p = PROVIDERS[modalProvSelect.value] || PROVIDERS.gemini;
-      getPrimaryLink.href = p.keyUrl || 'https://aistudio.google.com/app/apikey';
-      getPrimaryLink.innerHTML = `<span>🔑 Get ${p.name.split(' ')[0]} API Key ↗</span>`;
-      keyQuickLink.href = p.keyUrl || 'https://aistudio.google.com/app/apikey';
-      cardTitle.textContent = `${p.name}`;
-      if (p.id === 'gemini') {
-        cardBadge.textContent = '🌟 PRIMARY AI PROVIDER (RECOMMENDED)';
-        cardBenefits.innerHTML = `
-          <li><strong>100% Free</strong>: Free tier with your Google account (no credit card needed)</li>
-          <li><strong>Multimodal Vision</strong>: Reads image questions, diagrams, and math formulas</li>
-          <li><strong>Blazing Fast</strong>: Gemini 2.5 Flash with deep reasoning capability</li>
-        `;
-      } else if (p.id === 'groq') {
-        cardBadge.textContent = '⚡ ULTRA-FAST LPU INFERENCE';
-        cardBenefits.innerHTML = `
-          <li><strong>Free API Key</strong>: Available on console.groq.com/keys</li>
-          <li><strong>Speed</strong>: 500+ tokens per second on Llama 3.3 70B</li>
-          <li><strong>Zero Cost</strong>: Generous free quota</li>
-        `;
-      } else {
-        cardBadge.textContent = '🌐 MULTI-MODEL AI ROUTER';
-        cardBenefits.innerHTML = `
-          <li><strong>Diverse Models</strong>: Select top-tier frontier models</li>
-          <li><strong>Compatible</strong>: Fast OpenAI-compatible inference</li>
-          <li><strong>Easy Access</strong>: Get keys from ${p.keyUrl}</li>
-        `;
-      }
-      keyInput.value = getSafeValue(`${p.id}_api_key`, p.defaultKey || '');
-      keyInput.placeholder = `Paste your ${p.name.split(' ')[0]} API key here`;
-    });
-
-    const actionRow = document.createElement('div');
-    actionRow.style.cssText = 'display: flex; gap: 10px; margin-top: 6px;';
-
-    const saveBtn = document.createElement('button');
-    saveBtn.textContent = 'Save & Activate AI Assistant ⚡';
-    saveBtn.style.cssText = 'flex: 1; background: linear-gradient(135deg, #10b981, #059669); color: #ffffff; border: none; padding: 11px 16px; border-radius: 8px; font-weight: 700; font-size: 14px; cursor: pointer; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4); transition: transform 0.15s, box-shadow 0.15s;';
-    saveBtn.onmouseover = () => { saveBtn.style.transform = 'scale(1.02)'; };
-    saveBtn.onmouseout = () => { saveBtn.style.transform = 'scale(1)'; };
-
-    saveBtn.onclick = () => {
-      const pId = modalProvSelect.value;
-      const prov = PROVIDERS[pId] || PROVIDERS.gemini;
-      const keyVal = keyInput.value.trim();
-
-      if (!keyVal) {
-        keyInput.style.borderColor = '#ef4444';
-        keyInput.focus();
-        showToastNotification(`⚠️ Please paste your ${prov.name} API key first!`, false);
-        return;
-      }
-
-      setSafeValue('ai_provider', pId);
-      setSafeValue(`${pId}_api_key`, keyVal);
-      setSafeValue(`${pId}_base_url`, prov.baseUrl);
-      setSafeValue(`${pId}_model`, prov.defaultModel);
-
-      // Sync HUD inputs if rendered
-      const hudProvSelect = document.getElementById('ai-provider-select');
-      if (hudProvSelect) hudProvSelect.value = pId;
-      const hudKeyInput = document.getElementById('ai-api-key');
-      if (hudKeyInput) hudKeyInput.value = keyVal;
-      const hudUrlInput = document.getElementById('ai-base-url');
-      if (hudUrlInput) hudUrlInput.value = prov.baseUrl;
-
-      updateFloatingButtonBadge();
-
-      if (overlay.parentElement) overlay.parentElement.removeChild(overlay);
-
-      showToastNotification(`✅ ${prov.name} API key saved! Ready to solve. Press Alt+H or click ⚡ to open HUD.`, true);
-      setStatus(`API Key configured for ${prov.name} (${prov.defaultModel}). Ready!`);
-    };
-
-    const laterBtn = document.createElement('button');
-    laterBtn.textContent = 'Configure Later';
-    laterBtn.style.cssText = 'background: rgba(255,255,255,0.06); color: #94a3b8; border: 1px solid #334155; padding: 11px 16px; border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; transition: background 0.15s;';
-    laterBtn.onmouseover = () => { laterBtn.style.background = 'rgba(255,255,255,0.12)'; laterBtn.style.color = '#ffffff'; };
-    laterBtn.onmouseout = () => { laterBtn.style.background = 'rgba(255,255,255,0.06)'; laterBtn.style.color = '#94a3b8'; };
-    laterBtn.onclick = () => {
-      sessionStorage.setItem('ai_hud_onboarding_dismissed', '1');
-      if (overlay.parentElement) overlay.parentElement.removeChild(overlay);
-    };
-
-    actionRow.appendChild(laterBtn);
-    actionRow.appendChild(saveBtn);
-
-    formSection.appendChild(provRow);
-    formSection.appendChild(keyRow);
-    formSection.appendChild(actionRow);
-
-    modal.appendChild(headerRow);
-    modal.appendChild(desc);
-    modal.appendChild(providerCard);
-    modal.appendChild(formSection);
-
-    overlay.appendChild(modal);
-    (document.body || document.documentElement).appendChild(overlay);
-
-    keyInput.focus();
-  }
 
   function createHUD() {
     if (document.getElementById('ai-form-hud')) {
@@ -1964,15 +2541,121 @@
       return;
     }
 
+    // Injected style to enforce box-sizing, custom scrollbars, and mobile/iOS responsive optimizations
+    if (!document.getElementById('ai-form-hud-style')) {
+      const hudStyleEl = document.createElement('style');
+      hudStyleEl.id = 'ai-form-hud-style';
+      hudStyleEl.textContent = `
+        #ai-form-hud, #ai-form-hud * {
+          box-sizing: border-box !important;
+          -webkit-tap-highlight-color: transparent !important;
+        }
+        #ai-form-hud button,
+        #ai-form-hud select,
+        #ai-form-hud input,
+        #ai-form-hud label {
+          touch-action: manipulation !important;
+        }
+        #ai-hud-tabs button:focus, #ai-hud-tabs button:active, #ai-hud-tabs button:focus-visible {
+          outline: none !important;
+          border: none !important;
+        }
+        #ai-hud-body::-webkit-scrollbar,
+        #ai-hud-status::-webkit-scrollbar,
+        #ai-hud-docs-list::-webkit-scrollbar {
+          width: 5px !important;
+          height: 5px !important;
+        }
+        #ai-hud-body::-webkit-scrollbar-track,
+        #ai-hud-status::-webkit-scrollbar-track,
+        #ai-hud-docs-list::-webkit-scrollbar-track {
+          background: #020617 !important;
+        }
+        #ai-hud-body::-webkit-scrollbar-thumb,
+        #ai-hud-status::-webkit-scrollbar-thumb,
+        #ai-hud-docs-list::-webkit-scrollbar-thumb {
+          background: #334155 !important;
+          border-radius: 4px !important;
+        }
+        #ai-hud-body::-webkit-scrollbar-thumb:hover,
+        #ai-hud-status::-webkit-scrollbar-thumb:hover,
+        #ai-hud-docs-list::-webkit-scrollbar-thumb:hover {
+          background: #475569 !important;
+        }
+        #ai-hud-body,
+        #ai-hud-docs-list,
+        #ai-hud-status {
+          -webkit-overflow-scrolling: touch !important;
+          overscroll-behavior: contain !important;
+        }
+        /* Mobile Phone & iOS Safari optimizations */
+        @media (max-width: 480px) {
+          #ai-form-hud {
+            right: max(8px, env(safe-area-inset-right, 8px)) !important;
+            bottom: max(10px, env(safe-area-inset-bottom, 10px)) !important;
+            left: max(8px, env(safe-area-inset-left, 8px)) !important;
+            width: calc(100vw - max(16px, env(safe-area-inset-left, 8px) + env(safe-area-inset-right, 8px))) !important;
+            max-width: calc(100vw - max(16px, env(safe-area-inset-left, 8px) + env(safe-area-inset-right, 8px))) !important;
+            margin: 0 auto !important;
+          }
+          #ai-hud-panel {
+            width: 100% !important;
+            max-width: 100% !important;
+            max-height: min(90vh, calc(100dvh - 16px), calc(100svh - 16px)) !important;
+            border-radius: 12px !important;
+          }
+          #ai-hud-tabs {
+            padding: 6px 4px !important;
+            gap: 3px !important;
+          }
+          #ai-hud-tabs button {
+            padding: 7px 1px !important;
+            font-size: 10.5px !important;
+          }
+          #ai-hud-body {
+            max-height: calc(88dvh - 95px) !important;
+            padding: 10px 10px !important;
+            -webkit-overflow-scrolling: touch !important;
+            overscroll-behavior: contain !important;
+          }
+          /* Prevents iOS Safari from auto-zooming page on input focus */
+          #ai-form-hud input,
+          #ai-form-hud select,
+          #ai-form-hud textarea {
+            font-size: 16px !important;
+          }
+          #ai-solve-btn {
+            font-size: 11.5px !important;
+            padding: 10px 8px !important;
+          }
+        }
+        @media (max-width: 380px) {
+          .ai-grid-2col {
+            grid-template-columns: 1fr !important;
+          }
+          #ai-hud-tabs button {
+            font-size: 9.5px !important;
+            padding: 6px 0px !important;
+          }
+          #ai-solve-btn {
+            font-size: 11px !important;
+            padding: 10px 4px !important;
+          }
+        }
+      `;
+      document.head.appendChild(hudStyleEl);
+    }
+
     hudContainer = document.createElement('div');
     hudContainer.id = 'ai-form-hud';
     hudContainer.style.cssText = `
       position: fixed !important;
-      bottom: 24px !important;
-      right: 24px !important;
+      bottom: max(16px, env(safe-area-inset-bottom, 16px)) !important;
+      right: max(16px, env(safe-area-inset-right, 16px)) !important;
       top: auto !important;
       left: auto !important;
-      width: auto !important;
+      width: min(360px, calc(100vw - 16px)) !important;
+      max-width: calc(100vw - 16px) !important;
       height: auto !important;
       background: transparent !important;
       border: none !important;
@@ -2015,6 +2698,25 @@
       transition: transform 0.15s ease, opacity 0.2s ease, box-shadow 0.2s ease !important;
     `;
 
+    let hudTouchStartTime = 0;
+    hudFloatingButton.addEventListener('touchstart', (e) => {
+      hudTouchStartTime = Date.now();
+      const curS = getStealthSettings();
+      hudFloatingButton.style.fontSize = '20px';
+      hudFloatingButton.style.opacity = curS.hoverOpacity || '1';
+      hudFloatingButton.style.background = curS.hoverBg || '#2563eb';
+      hudFloatingButton.style.color = curS.hoverColor || '#ffffff';
+    }, { passive: true });
+
+    hudFloatingButton.addEventListener('touchend', (e) => {
+      if (Date.now() - hudTouchStartTime < 350) {
+        e.preventDefault();
+        e.stopPropagation();
+        isMinimized = false;
+        updateHUDState();
+      }
+    });
+
     hudFloatingButton.addEventListener('click', (e) => {
       e.stopPropagation();
       isMinimized = false;
@@ -2045,22 +2747,15 @@
       }
     });
 
-    hudFloatingButton.addEventListener('touchstart', () => {
-      const curS = getStealthSettings();
-      hudFloatingButton.style.fontSize = '20px';
-      hudFloatingButton.style.opacity = curS.hoverOpacity || '1';
-      hudFloatingButton.style.background = curS.hoverBg || '#2563eb';
-      hudFloatingButton.style.color = curS.hoverColor || '#ffffff';
-    }, { passive: true });
-
 
     // 2. MAIN EXPANDED PANEL
     hudPanel = document.createElement('div');
     hudPanel.id = 'ai-hud-panel';
     hudPanel.style.cssText = `
       width: 100% !important;
-      min-width: 320px !important;
-      min-height: 250px !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+      min-height: 220px !important;
       max-height: min(88vh, calc(100vh - 32px)) !important;
       background: #0f172a !important;
       color: #f8fafc !important;
@@ -2080,7 +2775,7 @@
     const header = document.createElement('div');
     header.id = 'ai-hud-header';
     header.style.cssText = `
-      padding: 12px 16px;
+      padding: 10px 14px;
       background: #1e293b;
       display: flex;
       justify-content: space-between;
@@ -2088,10 +2783,13 @@
       font-weight: 600;
       border-bottom: 1px solid #334155;
       cursor: move;
+      box-sizing: border-box;
+      flex-shrink: 0;
+      width: 100%;
     `;
 
     const titleBadge = document.createElement('div');
-    titleBadge.style.cssText = 'display: flex; align-items: center; gap: 8px;';
+    titleBadge.style.cssText = 'display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: #f8fafc;';
 
     const indicator = document.createElement('span');
     indicator.id = 'ai-hud-indicator';
@@ -2108,72 +2806,109 @@
     minBtn.id = 'ai-minimize-btn';
     minBtn.textContent = '−';
     minBtn.title = 'Minimize (Alt+H or F2)';
-    minBtn.style.cssText = 'background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 22px; line-height: 1; padding: 0 4px;';
+    minBtn.style.cssText = 'background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 22px; line-height: 1; padding: 0 4px; outline: none; display: flex; align-items: center; justify-content: center;';
 
     header.appendChild(titleBadge);
     header.appendChild(minBtn);
 
+    // TAB BAR NAVIGATION
+    const navTabBar = document.createElement('div');
+    navTabBar.id = 'ai-hud-tabs';
+    navTabBar.style.cssText = 'display: flex; background: #0b0f19; border-bottom: 1px solid #334155; padding: 6px 8px; gap: 4px; box-sizing: border-box; overflow: hidden; flex-shrink: 0; width: 100%;';
+
+    const tabsDef = [
+      { id: 'solver', label: '🚀 Solver', title: 'Main solver cockpit & status' },
+      { id: 'study', label: '📚 Study', title: 'Dedicated study materials & knowledge base HUD' },
+      { id: 'settings', label: '⚙️ Settings', title: 'AI provider, API keys, models, reasoning, stealth, pacing, likert' },
+      { id: 'profile', label: '👤 Profile', title: 'Autofill persona and profile' }
+    ];
+
+    const tabButtons = {};
+    let activeTabId = 'solver';
+
+    tabsDef.forEach(t => {
+      const btn = document.createElement('button');
+      btn.id = `ai-tab-btn-${t.id}`;
+      btn.textContent = t.label;
+      btn.title = t.title;
+      btn.style.cssText = `flex: 1; min-width: 0; padding: 6px 2px; border: none; outline: none; border-radius: 5px; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; transition: all 0.15s ease; background: ${t.id === 'solver' ? '#2563eb' : '#1e293b'}; color: ${t.id === 'solver' ? '#ffffff' : '#94a3b8'}; box-shadow: ${t.id === 'solver' ? '0 0 0 1px #3b82f6 inset' : 'none'};`;
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        switchTab(t.id);
+      });
+      btn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        switchTab(t.id);
+      });
+      tabButtons[t.id] = btn;
+      navTabBar.appendChild(btn);
+    });
+
+    let viewSolver = null;
+    let viewStudy = null;
+    let viewSettings = null;
+    let viewProfile = null;
+    let updateSolverCards = null;
+
+    function switchTab(targetId) {
+      activeTabId = targetId;
+      Object.keys(tabButtons).forEach(id => {
+        const b = tabButtons[id];
+        b.style.outline = 'none';
+        if (id === targetId) {
+          b.style.background = '#2563eb';
+          b.style.color = '#ffffff';
+          b.style.boxShadow = '0 0 0 1px #3b82f6 inset';
+        } else {
+          b.style.background = '#1e293b';
+          b.style.color = '#94a3b8';
+          b.style.boxShadow = 'none';
+        }
+      });
+
+      if (viewSolver) viewSolver.style.display = targetId === 'solver' ? 'flex' : 'none';
+      if (viewStudy) viewStudy.style.display = targetId === 'study' ? 'flex' : 'none';
+      if (viewSettings) viewSettings.style.display = targetId === 'settings' ? 'flex' : 'none';
+      if (viewProfile) viewProfile.style.display = targetId === 'profile' ? 'flex' : 'none';
+
+      if (targetId === 'solver' && typeof updateSolverCards === 'function') {
+        updateSolverCards();
+      }
+    }
+
     // Body
     const body = document.createElement('div');
     body.id = 'ai-hud-body';
-    body.style.cssText = 'padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; max-height: calc(88vh - 60px);';
+    body.style.cssText = 'padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; overflow-x: hidden; max-height: calc(88vh - 95px); width: 100%; box-sizing: border-box;';
 
-    // 1. AI Provider Selector
+    // 1. AI Provider (Dedicated AnyModel)
     const providerSection = document.createElement('div');
     const providerLabel = document.createElement('div');
     providerLabel.textContent = 'AI Provider';
     providerLabel.style.cssText = 'font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; font-weight: 600; margin-bottom: 2px;';
 
-    const providerSelect = document.createElement('select');
-    providerSelect.id = 'ai-provider-select';
-    providerSelect.style.cssText = 'background: #1e293b; border: 1.5px solid #3b82f6; color: #f8fafc; padding: 8px 10px; border-radius: 6px; width: 100%; box-sizing: border-box; font-size: 14px; outline: none; font-weight: 700; cursor: pointer;';
-
-    Object.values(PROVIDERS).forEach(p => {
-      const opt = document.createElement('option');
-      opt.value = p.id;
-      opt.textContent = p.name;
-      providerSelect.appendChild(opt);
-    });
+    const providerBadge = document.createElement('div');
+    providerBadge.id = 'ai-provider-badge';
+    providerBadge.textContent = '⚡ AnyModel (anymodel.org) — Dedicated Active';
+    providerBadge.style.cssText = 'background: #1e293b; border: 1.5px solid #3b82f6; color: #38bdf8; padding: 7px 10px; border-radius: 6px; width: 100%; box-sizing: border-box; font-size: 13px; font-weight: 700;';
 
     providerSection.appendChild(providerLabel);
-    providerSection.appendChild(providerSelect);
+    providerSection.appendChild(providerBadge);
 
     // 2. API Key
     const keySection = document.createElement('div');
-    const keyLabelRow = document.createElement('div');
-    keyLabelRow.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;';
-
     const keyLabel = document.createElement('div');
-    keyLabel.textContent = 'API Key';
-    keyLabel.style.cssText = 'font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; font-weight: 600;';
-
-    const keyProviderLink = document.createElement('a');
-    keyProviderLink.id = 'ai-hud-get-key-link';
-    keyProviderLink.href = 'https://aistudio.google.com/app/apikey';
-    keyProviderLink.target = '_blank';
-    keyProviderLink.rel = 'noopener noreferrer';
-    keyProviderLink.textContent = '🔑 Get Free Key ↗';
-    keyProviderLink.style.cssText = 'font-size: 11px; color: #38bdf8; text-decoration: none; font-weight: 700; cursor: pointer;';
-    keyProviderLink.onmouseover = () => { keyProviderLink.style.textDecoration = 'underline'; };
-    keyProviderLink.onmouseout = () => { keyProviderLink.style.textDecoration = 'none'; };
-
-    keyLabelRow.appendChild(keyLabel);
-    keyLabelRow.appendChild(keyProviderLink);
+    keyLabel.textContent = 'AnyModel API Key';
+    keyLabel.style.cssText = 'font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; font-weight: 600; margin-bottom: 2px;';
 
     const keyInput = document.createElement('input');
     keyInput.type = 'password';
     keyInput.id = 'ai-api-key';
-    keyInput.placeholder = 'Paste API key here';
+    keyInput.placeholder = 'Paste AnyModel API key here';
     keyInput.style.cssText = 'background: #1e293b; border: 1px solid #475569; color: #f8fafc; padding: 8px 10px; border-radius: 6px; width: 100%; box-sizing: border-box; font-size: 15px; outline: none;';
 
-    const keyHelpHint = document.createElement('div');
-    keyHelpHint.id = 'ai-hud-key-hint';
-    keyHelpHint.textContent = 'Primary: Google Gemini (Free at aistudio.google.com)';
-    keyHelpHint.style.cssText = 'font-size: 11px; color: #64748b; margin-top: 3px;';
-
-    keySection.appendChild(keyLabelRow);
+    keySection.appendChild(keyLabel);
     keySection.appendChild(keyInput);
-    keySection.appendChild(keyHelpHint);
 
     // 3. API Base URL
     const urlSection = document.createElement('div');
@@ -2194,32 +2929,61 @@
     // 4. Model
     const modelSection = document.createElement('div');
     const modelLabel = document.createElement('div');
-    modelLabel.textContent = 'AI Model';
+    modelLabel.textContent = 'AnyModel Model';
     modelLabel.style.cssText = 'font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; font-weight: 600; margin-bottom: 2px;';
 
     const modelSelect = document.createElement('select');
     modelSelect.id = 'ai-model-select';
     modelSelect.style.cssText = 'background: #1e293b; border: 1px solid #475569; color: #f8fafc; padding: 8px 10px; border-radius: 6px; width: 100%; box-sizing: border-box; font-size: 14px; outline: none;';
 
-    function populateModels(providerId, selectedModelId) {
-      const prov = PROVIDERS[providerId] || PROVIDERS.anymodel;
+    function populateModels(selectedModelId) {
       modelSelect.textContent = '';
-      prov.models.forEach(m => {
+      const groups = {};
+      ANYMODEL_MODELS.forEach(m => {
+        const grpName = m.group || 'Other';
+        if (!groups[grpName]) {
+          const optGroup = document.createElement('optgroup');
+          optGroup.label = `─── ${grpName.toUpperCase()} ───`;
+          optGroup.style.cssText = 'background: #0f172a; color: #38bdf8; font-weight: bold; padding: 4px;';
+          groups[grpName] = optGroup;
+          modelSelect.appendChild(optGroup);
+        }
         const opt = document.createElement('option');
         opt.value = m.id;
         opt.textContent = m.label;
+        opt.style.cssText = 'background: #1e293b; color: #f8fafc; font-weight: normal; padding: 4px;';
         if (selectedModelId && m.id === selectedModelId) {
           opt.selected = true;
         }
-        modelSelect.appendChild(opt);
+        groups[grpName].appendChild(opt);
       });
-      if (!modelSelect.value && prov.models[0]) {
-        modelSelect.value = prov.models[0].id;
+      if (!modelSelect.value && ANYMODEL_MODELS[0]) {
+        modelSelect.value = ANYMODEL_MODELS[0].id;
       }
     }
 
     modelSection.appendChild(modelLabel);
     modelSection.appendChild(modelSelect);
+
+    // 4b. Live Web Search Grounding Control
+    const webSearchSection = document.createElement('div');
+    const webSearchLabel = document.createElement('div');
+    webSearchLabel.textContent = 'Live Web Search Grounding (100% Quiz Accuracy)';
+    webSearchLabel.style.cssText = 'font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #38bdf8; font-weight: 600; margin-bottom: 2px;';
+
+    const webSearchSelect = document.createElement('select');
+    webSearchSelect.id = 'ai-web-search-select';
+    webSearchSelect.style.cssText = 'background: #1e293b; border: 1.5px solid #0284c7; color: #f8fafc; padding: 8px 10px; border-radius: 6px; width: 100%; box-sizing: border-box; font-size: 13px; outline: none; font-weight: 600; cursor: pointer;';
+
+    WEB_SEARCH_MODES.forEach(w => {
+      const opt = document.createElement('option');
+      opt.value = w.id;
+      opt.textContent = w.label;
+      webSearchSelect.appendChild(opt);
+    });
+
+    webSearchSection.appendChild(webSearchLabel);
+    webSearchSection.appendChild(webSearchSelect);
 
     // 5. Reasoning Token Budget
     const tokenSection = document.createElement('div');
@@ -2333,16 +3097,16 @@
 
     function createField(labelText, id, placeholder, val = '') {
       const wrapper = document.createElement('div');
-      wrapper.style.cssText = 'display: flex; flex-direction: column; gap: 2px;';
+      wrapper.style.cssText = 'display: flex; flex-direction: column; gap: 2px; min-width: 0; width: 100%; box-sizing: border-box;';
       const lbl = document.createElement('label');
       lbl.textContent = labelText;
-      lbl.style.cssText = 'font-size: 10px; text-transform: uppercase; color: #94a3b8; font-weight: 600;';
+      lbl.style.cssText = 'font-size: 10px; text-transform: uppercase; color: #94a3b8; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;';
       const inp = document.createElement('input');
       inp.id = id;
       inp.type = 'text';
       inp.value = val;
       inp.placeholder = placeholder;
-      inp.style.cssText = 'background: #0f172a; border: 1px solid #334155; color: #f8fafc; padding: 6px 8px; border-radius: 4px; font-size: 14px; outline: none; width: 100%; box-sizing: border-box;';
+      inp.style.cssText = 'background: #0f172a; border: 1px solid #334155; color: #f8fafc; padding: 6px 8px; border-radius: 4px; font-size: 13px; outline: none; width: 100%; min-width: 0; box-sizing: border-box;';
       wrapper.appendChild(lbl);
       wrapper.appendChild(inp);
       return { wrapper, inp };
@@ -2350,7 +3114,8 @@
 
     function createRow(item1, item2) {
       const row = document.createElement('div');
-      row.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr; gap: 8px;';
+      row.className = 'ai-grid-2col';
+      row.style.cssText = 'display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; width: 100%; box-sizing: border-box;';
       row.appendChild(item1.wrapper);
       row.appendChild(item2.wrapper);
       return row;
@@ -2391,10 +3156,10 @@
 
     // QC Persona Selector with Auto-Rotate and Manual Jump controls
     const personaSelectorWrapper = document.createElement('div');
-    personaSelectorWrapper.style.cssText = 'display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px; margin-bottom: 6px; border-bottom: 1px solid #334155;';
+    personaSelectorWrapper.style.cssText = 'display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px; margin-bottom: 6px; border-bottom: 1px solid #334155; width: 100%; box-sizing: border-box;';
 
     const personaHeaderRow = document.createElement('div');
-    personaHeaderRow.style.cssText = 'display: flex; justify-content: space-between; align-items: center;';
+    personaHeaderRow.style.cssText = 'display: flex; justify-content: space-between; align-items: center; width: 100%; box-sizing: border-box;';
 
     const personaLabel = document.createElement('div');
     personaLabel.textContent = '🇵🇭 QC Personas (Strictly Quezon City)';
@@ -2408,13 +3173,13 @@
       const enabled = isAutoRotateEnabled();
       if (!enabled) {
         autoRotateToggle.textContent = '⏸️ Auto-Rotate: OFF';
-        autoRotateToggle.style.cssText = 'background: #334155; color: #94a3b8; border: 1px solid #475569; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; cursor: pointer;';
+        autoRotateToggle.style.cssText = 'background: #334155; color: #94a3b8; border: 1px solid #475569; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; cursor: pointer; white-space: nowrap; flex-shrink: 0;';
       } else if (mode === 'infinite') {
         autoRotateToggle.textContent = '✨ Auto-Rotate: Infinite';
-        autoRotateToggle.style.cssText = 'background: #047857; color: #ecfdf5; border: 1px solid #10b981; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; cursor: pointer;';
+        autoRotateToggle.style.cssText = 'background: #047857; color: #ecfdf5; border: 1px solid #10b981; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; cursor: pointer; white-space: nowrap; flex-shrink: 0;';
       } else {
         autoRotateToggle.textContent = '🔁 Auto-Rotate: Presets';
-        autoRotateToggle.style.cssText = 'background: #0369a1; color: #f0f9ff; border: 1px solid #38bdf8; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; cursor: pointer;';
+        autoRotateToggle.style.cssText = 'background: #0369a1; color: #f0f9ff; border: 1px solid #38bdf8; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; cursor: pointer; white-space: nowrap; flex-shrink: 0;';
       }
     };
     renderAutoRotateBtn();
@@ -2437,12 +3202,12 @@
     personaHeaderRow.appendChild(personaLabel);
     personaHeaderRow.appendChild(autoRotateToggle);
 
-    const personaRow = document.createElement('div');
-    personaRow.style.cssText = 'display: flex; gap: 6px;';
+    const personaSelectWrapper = document.createElement('div');
+    personaSelectWrapper.style.cssText = 'width: 100%; box-sizing: border-box;';
 
     const personaSelect = document.createElement('select');
     personaSelect.id = 'ai-qc-persona-select';
-    personaSelect.style.cssText = 'flex: 1; background: #0f172a; border: 1px solid #0284c7; color: #f8fafc; padding: 6px 8px; border-radius: 4px; font-size: 12px; outline: none; font-weight: 600; cursor: pointer;';
+    personaSelect.style.cssText = 'width: 100%; box-sizing: border-box; background: #0f172a; border: 1px solid #0284c7; color: #f8fafc; padding: 6px 8px; border-radius: 4px; font-size: 12px; outline: none; font-weight: 600; cursor: pointer; text-overflow: ellipsis; overflow: hidden;';
 
     QC_PHILIPPINES_PERSONAS.forEach(p => {
       const opt = document.createElement('option');
@@ -2450,21 +3215,29 @@
       opt.textContent = p.label;
       personaSelect.appendChild(opt);
     });
+    personaSelectWrapper.appendChild(personaSelect);
+
+    const personaBtnRow = document.createElement('div');
+    personaBtnRow.style.cssText = 'display: flex; gap: 6px; width: 100%; box-sizing: border-box;';
 
     const genInfiniteBtn = document.createElement('button');
     genInfiniteBtn.textContent = '✨ New QC';
     genInfiniteBtn.title = 'Generate a brand new authentic Quezon City college student identity right now';
-    genInfiniteBtn.style.cssText = 'background: #059669; color: #fff; border: none; padding: 6px 9px; border-radius: 4px; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap;';
+    genInfiniteBtn.style.cssText = 'flex: 1; min-width: 0; background: #059669; color: #fff; border: none; padding: 6px 4px; border-radius: 4px; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap; text-align: center;';
 
     const nextPersonaBtn = document.createElement('button');
     nextPersonaBtn.textContent = '⏭️ Next';
     nextPersonaBtn.title = 'Rotate to the next persona';
-    nextPersonaBtn.style.cssText = 'background: #0284c7; color: #fff; border: none; padding: 6px 9px; border-radius: 4px; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap;';
+    nextPersonaBtn.style.cssText = 'flex: 1; min-width: 0; background: #0284c7; color: #fff; border: none; padding: 6px 4px; border-radius: 4px; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap; text-align: center;';
 
     const randomPersonaBtn = document.createElement('button');
     randomPersonaBtn.textContent = '🎲 Random';
     randomPersonaBtn.title = 'Switch to a random preset persona';
-    randomPersonaBtn.style.cssText = 'background: #2563eb; color: #fff; border: none; padding: 6px 9px; border-radius: 4px; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap;';
+    randomPersonaBtn.style.cssText = 'flex: 1; min-width: 0; background: #2563eb; color: #fff; border: none; padding: 6px 4px; border-radius: 4px; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap; text-align: center;';
+
+    personaBtnRow.appendChild(genInfiniteBtn);
+    personaBtnRow.appendChild(nextPersonaBtn);
+    personaBtnRow.appendChild(randomPersonaBtn);
 
     function applyPersonaToInputs(p, announce = true) {
       if (!p) return;
@@ -2535,12 +3308,9 @@
       applyPersonaToInputs(p);
     });
 
-    personaRow.appendChild(personaSelect);
-    personaRow.appendChild(genInfiniteBtn);
-    personaRow.appendChild(nextPersonaBtn);
-    personaRow.appendChild(randomPersonaBtn);
     personaSelectorWrapper.appendChild(personaHeaderRow);
-    personaSelectorWrapper.appendChild(personaRow);
+    personaSelectorWrapper.appendChild(personaSelectWrapper);
+    personaSelectorWrapper.appendChild(personaBtnRow);
 
     profileContainer.appendChild(personaSelectorWrapper);
     profileContainer.appendChild(createRow(fFullName, fNickname));
@@ -2659,6 +3429,406 @@
       setStatus('[Profile Reset] Restored generic placeholder profile.');
     });
 
+    // 8b. Study Material Knowledge Folder (Patch 1.2.0 Next Level)
+    const knowledgeToggleBtn = document.createElement('button');
+    knowledgeToggleBtn.id = 'ai-knowledge-toggle-btn';
+    knowledgeToggleBtn.style.cssText = 'background: #1e1b4b; color: #c7d2fe; border: 1.5px solid #6366f1; padding: 7px 10px; border-radius: 6px; cursor: pointer; font-weight: 700; font-size: 11px; text-align: left; display: flex; justify-content: space-between; align-items: center; transition: all 0.15s;';
+    knowledgeToggleBtn.onmouseover = () => { knowledgeToggleBtn.style.background = '#312e81'; };
+    knowledgeToggleBtn.onmouseout = () => { knowledgeToggleBtn.style.background = '#1e1b4b'; };
+
+    const knowledgeContainer = document.createElement('div');
+    knowledgeContainer.id = 'ai-knowledge-container';
+    knowledgeContainer.style.cssText = 'background: #020617; border: 1.5px solid #4338ca; border-radius: 8px; padding: 10px; display: none; flex-direction: column; gap: 9px; max-height: 320px; overflow-y: auto; -webkit-overflow-scrolling: touch; box-sizing: border-box;';
+
+    const renderKnowledgeToggleText = () => {
+      const count = activeKnowledgeDocs.length;
+      const totalWords = activeKnowledgeDocs.reduce((acc, d) => acc + (d.wordCount || 0), 0);
+      const isExp = knowledgeContainer.style.display === 'flex';
+      const arrow = isExp ? '▲' : '▼';
+      const countBadge = count > 0 ? `[${count} Docs • ~${(totalWords/1000).toFixed(1)}k words]` : '[Empty - Click to Load]';
+      knowledgeToggleBtn.innerHTML = `<span>📚 Study Material Folder (Patch 1.2.0) ${countBadge}</span><span>${arrow}</span>`;
+    };
+
+    // Hidden Folder and File Inputs
+    const folderInput = document.createElement('input');
+    folderInput.type = 'file';
+    folderInput.id = 'ai-folder-input';
+    folderInput.webkitdirectory = true;
+    folderInput.directory = true;
+    folderInput.multiple = true;
+    folderInput.style.display = 'none';
+
+    const filesInput = document.createElement('input');
+    filesInput.type = 'file';
+    filesInput.id = 'ai-files-input';
+    filesInput.multiple = true;
+    filesInput.accept = '.docx,.doc,.pptx,.ppt,.pdf,.txt,.md';
+    filesInput.style.display = 'none';
+
+    // Zero Drag & Drop Info Banner
+    const filesFolderNotice = document.createElement('div');
+    filesFolderNotice.style.cssText = 'background: rgba(16, 185, 129, 0.08); border: 1px solid #059669; border-radius: 5px; padding: 6px 8px; font-size: 10px; color: #a7f3d0; line-height: 1.4;';
+    filesFolderNotice.innerHTML = '📂 <b>Auto-Sync (No Drag & Drop):</b> Put your course files into the extension\'s <code>files/</code> folder. Run <code>sync_files.bat</code> once, and the AI will auto-read them on every form!';
+
+    // Actions Header Row
+    const knowledgeActionsRow = document.createElement('div');
+    knowledgeActionsRow.style.cssText = 'display: flex; gap: 6px; align-items: center; flex-wrap: wrap;';
+
+    const syncFolderBtn = document.createElement('button');
+    syncFolderBtn.id = 'ai-sync-files-btn';
+    syncFolderBtn.innerHTML = '🔄 Sync files/ Folder';
+    syncFolderBtn.title = 'Automatically scan and load all .docx, .pdf, and .pptx files from the extension files/ folder (Zero drag-and-drop)';
+    syncFolderBtn.style.cssText = 'flex: 1.2; background: linear-gradient(135deg, #059669, #047857); color: #fff; border: none; padding: 7px 10px; border-radius: 5px; font-weight: 700; font-size: 11px; cursor: pointer; white-space: nowrap;';
+    syncFolderBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      await loadFilesFromExtensionFolder(true);
+      renderKnowledgeToggleText();
+    });
+
+    const openFolderBtn = document.createElement('button');
+    openFolderBtn.textContent = '📁 Browse Folder';
+    openFolderBtn.title = 'Optionally select an external folder on your computer';
+    openFolderBtn.style.cssText = 'flex: 1; background: linear-gradient(135deg, #4f46e5, #4338ca); color: #fff; border: none; padding: 7px 10px; border-radius: 5px; font-weight: 700; font-size: 11px; cursor: pointer; white-space: nowrap;';
+    openFolderBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      folderInput.click();
+    });
+
+    const addFilesBtn = document.createElement('button');
+    addFilesBtn.textContent = '📄 Add Files';
+    addFilesBtn.title = 'Select individual .docx, .pdf, or .ppt files';
+    addFilesBtn.style.cssText = 'flex: 1; background: linear-gradient(135deg, #0284c7, #0369a1); color: #fff; border: none; padding: 7px 10px; border-radius: 5px; font-weight: 700; font-size: 11px; cursor: pointer; white-space: nowrap;';
+    addFilesBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      filesInput.click();
+    });
+
+    const importUrlBtn = document.createElement('button');
+    importUrlBtn.textContent = '🔗 Import Link';
+    importUrlBtn.title = 'Import document directly from a web link / cloud URL (ideal for mobile / iOS)';
+    importUrlBtn.style.cssText = 'flex: 1; background: linear-gradient(135deg, #7c3aed, #6d28d9); color: #fff; border: none; padding: 7px 10px; border-radius: 5px; font-weight: 700; font-size: 11px; cursor: pointer; white-space: nowrap;';
+    importUrlBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const inputUrl = prompt('Enter direct URL to study material (.docx, .pdf, .pptx, .txt):');
+      if (!inputUrl || !inputUrl.trim()) return;
+      const cleanUrl = inputUrl.trim();
+      try {
+        setStatus(`🌐 Fetching document from "${cleanUrl.slice(0, 45)}..."`);
+        const urlName = cleanUrl.split('/').pop().split('?')[0] || 'imported_doc';
+        let arrayBuffer = null;
+        try {
+          const res = await fetch(cleanUrl);
+          if (res.ok) arrayBuffer = await res.arrayBuffer();
+        } catch (err) {}
+
+        if (!arrayBuffer) {
+          try {
+            const crossRes = await fetchCrossDomain({ url: cleanUrl, responseType: 'blob' });
+            if (crossRes && crossRes.response) {
+              arrayBuffer = await crossRes.response.arrayBuffer();
+            }
+          } catch (e2) {}
+        }
+
+        if (arrayBuffer) {
+          const parsed = await parseDocumentFile({
+            name: urlName,
+            arrayBuffer,
+            size: arrayBuffer.byteLength
+          });
+          const existingIdx = activeKnowledgeDocs.findIndex(d => d.name === parsed.name);
+          if (existingIdx !== -1) {
+            activeKnowledgeDocs[existingIdx] = parsed;
+          } else {
+            activeKnowledgeDocs.push(parsed);
+          }
+          saveKnowledgeDocsToStorage();
+          if (typeof updateHUDKnowledgeListFn === 'function') {
+            updateHUDKnowledgeListFn();
+          }
+          renderKnowledgeToggleText();
+          setStatus(`✅ Successfully imported "${urlName}" (~${parsed.wordCount} words)! Grounding active.`);
+        } else {
+          setStatus('⚠️ Could not download file from specified URL. Check link permissions or CORS.');
+        }
+      } catch (err) {
+        setStatus(`⚠️ Failed to import from URL: ${err.message}`);
+      }
+    });
+
+    const clearAllDocsBtn = document.createElement('button');
+    clearAllDocsBtn.textContent = '🧹 Clear';
+    clearAllDocsBtn.title = 'Clear all loaded study materials from memory and storage';
+    clearAllDocsBtn.style.cssText = 'background: #1e293b; color: #f87171; border: 1px solid #7f1d1d; padding: 7px 10px; border-radius: 5px; font-weight: 600; font-size: 11px; cursor: pointer; white-space: nowrap;';
+    clearAllDocsBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (confirm('Clear all study materials from knowledge base?')) {
+        clearAllKnowledgeDocs();
+        renderKnowledgeToggleText();
+      }
+    });
+
+    knowledgeActionsRow.appendChild(syncFolderBtn);
+    knowledgeActionsRow.appendChild(openFolderBtn);
+    knowledgeActionsRow.appendChild(addFilesBtn);
+    knowledgeActionsRow.appendChild(importUrlBtn);
+    knowledgeActionsRow.appendChild(clearAllDocsBtn);
+
+    // Grounding Mode Selector
+    const modeRow = document.createElement('div');
+    modeRow.style.cssText = 'display: flex; flex-direction: column; gap: 2px;';
+    const modeLabel = document.createElement('label');
+    modeLabel.textContent = 'Knowledge Grounding Mode';
+    modeLabel.style.cssText = 'font-size: 10px; text-transform: uppercase; color: #a5b4fc; font-weight: 700;';
+
+    const modeSelect = document.createElement('select');
+    modeSelect.id = 'ai-grounding-mode-select';
+    modeSelect.style.cssText = 'background: #0f172a; border: 1px solid #4338ca; color: #f8fafc; padding: 6px 8px; border-radius: 4px; font-size: 11px; outline: none; font-weight: 600; cursor: pointer;';
+    GROUNDING_MODES.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.label;
+      modeSelect.appendChild(opt);
+    });
+    modeSelect.value = getSafeValue('grounding_mode', 'priority');
+    modeSelect.addEventListener('change', () => {
+      setSafeValue('grounding_mode', modeSelect.value);
+      setStatus(`Grounding Mode updated: ${modeSelect.options[modeSelect.selectedIndex].text}`);
+    });
+    modeRow.appendChild(modeLabel);
+    modeRow.appendChild(modeSelect);
+
+    // Drag & Drop Zone
+    const dropZone = document.createElement('div');
+    dropZone.id = 'ai-doc-dropzone';
+    dropZone.textContent = '📂 Drag & Drop your study folder or DOCX, PDF, PPT files here';
+    dropZone.style.cssText = 'border: 2px dashed #6366f1; border-radius: 6px; padding: 10px; text-align: center; color: #94a3b8; font-size: 11px; cursor: pointer; background: rgba(99, 102, 241, 0.05); transition: all 0.2s;';
+    dropZone.addEventListener('click', () => {
+      if (typeof window !== 'undefined' && (('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || window.innerWidth <= 480)) {
+        filesInput.click();
+      } else {
+        folderInput.click();
+      }
+    });
+
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.style.background = 'rgba(99, 102, 241, 0.2)';
+      dropZone.style.borderColor = '#a5b4fc';
+      dropZone.style.color = '#ffffff';
+    });
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.style.background = 'rgba(99, 102, 241, 0.05)';
+      dropZone.style.borderColor = '#6366f1';
+      dropZone.style.color = '#94a3b8';
+    });
+    dropZone.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      dropZone.style.background = 'rgba(99, 102, 241, 0.05)';
+      dropZone.style.borderColor = '#6366f1';
+      dropZone.style.color = '#94a3b8';
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        await handleSelectedDocumentFiles(e.dataTransfer.files);
+        renderKnowledgeToggleText();
+      }
+    });
+
+    folderInput.addEventListener('change', async () => {
+      if (folderInput.files && folderInput.files.length > 0) {
+        await handleSelectedDocumentFiles(folderInput.files);
+        renderKnowledgeToggleText();
+      }
+      folderInput.value = '';
+    });
+
+    filesInput.addEventListener('change', async () => {
+      if (filesInput.files && filesInput.files.length > 0) {
+        await handleSelectedDocumentFiles(filesInput.files);
+        renderKnowledgeToggleText();
+      }
+      filesInput.value = '';
+    });
+
+    // Documents Cards List
+    const docsListContainer = document.createElement('div');
+    docsListContainer.id = 'ai-knowledge-docs-list';
+    docsListContainer.style.cssText = 'display: flex; flex-direction: column; gap: 6px; max-height: 160px; overflow-y: auto;';
+
+    // Text Preview Drawer
+    const previewDrawer = document.createElement('div');
+    previewDrawer.id = 'ai-doc-preview-drawer';
+    previewDrawer.style.cssText = 'display: none; flex-direction: column; gap: 4px; background: #030712; border: 1px solid #3730a3; border-radius: 6px; padding: 8px; margin-top: 4px;';
+    const previewHeader = document.createElement('div');
+    previewHeader.style.cssText = 'display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 11px; color: #a5b4fc;';
+    const previewTitle = document.createElement('span');
+    previewTitle.textContent = 'Document Text Preview';
+    const closePreviewBtn = document.createElement('button');
+    closePreviewBtn.textContent = '✕ Close';
+    closePreviewBtn.style.cssText = 'background: none; border: none; color: #94a3b8; font-size: 10px; cursor: pointer;';
+    closePreviewBtn.addEventListener('click', () => { previewDrawer.style.display = 'none'; });
+    previewHeader.appendChild(previewTitle);
+    previewHeader.appendChild(closePreviewBtn);
+    const previewBody = document.createElement('pre');
+    previewBody.style.cssText = 'white-space: pre-wrap; font-family: monospace; font-size: 10px; color: #cbd5e1; max-height: 140px; overflow-y: auto; background: #0b0f19; padding: 6px; border-radius: 4px; line-height: 1.35; margin: 0;';
+    previewDrawer.appendChild(previewHeader);
+    previewDrawer.appendChild(previewBody);
+
+    // Quick Search Test Bar
+    const testSearchWrapper = document.createElement('div');
+    testSearchWrapper.style.cssText = 'display: flex; flex-direction: column; gap: 4px; border-top: 1px solid #1e293b; padding-top: 8px;';
+    const testSearchLabel = document.createElement('div');
+    testSearchLabel.textContent = '🔍 Quick Test Retrieval (Instant Grounding Preview)';
+    testSearchLabel.style.cssText = 'font-size: 10px; text-transform: uppercase; color: #38bdf8; font-weight: 700;';
+    const testSearchInput = document.createElement('input');
+    testSearchInput.type = 'text';
+    testSearchInput.placeholder = 'Search keyword in your files (e.g. mitosis, formula)...';
+    testSearchInput.style.cssText = 'background: #0f172a; border: 1px solid #334155; color: #f8fafc; padding: 5px 8px; border-radius: 4px; font-size: 11px; outline: none; width: 100%; box-sizing: border-box;';
+    const testSearchResults = document.createElement('div');
+    testSearchResults.style.cssText = 'font-family: monospace; font-size: 10px; color: #94a3b8; max-height: 80px; overflow-y: auto; background: #020617; padding: 4px 6px; border-radius: 4px; display: none; line-height: 1.3; border: 1px solid #1e293b;';
+
+    testSearchInput.addEventListener('input', () => {
+      const q = testSearchInput.value.trim();
+      if (!q || activeKnowledgeDocs.length === 0) {
+        testSearchResults.style.display = 'none';
+        return;
+      }
+      const res = searchKnowledgeBase(q, [], 2);
+      if (res.excerpts.length > 0) {
+        testSearchResults.style.display = 'block';
+        testSearchResults.innerHTML = res.excerpts.map(e => `
+          <div style="margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px dashed #334155;">
+            <span style="color: #38bdf8; font-weight: 700;">[${e.source} - ${e.location}] (Score: ${e.score})</span><br/>
+            <span style="color: #e2e8f0;">"${e.text.slice(0, 180)}..."</span>
+          </div>
+        `).join('');
+      } else {
+        testSearchResults.style.display = 'block';
+        testSearchResults.textContent = 'No matching excerpts found in loaded documents.';
+      }
+    });
+
+    testSearchWrapper.appendChild(testSearchLabel);
+    testSearchWrapper.appendChild(testSearchInput);
+    testSearchWrapper.appendChild(testSearchResults);
+
+    function renderDocsList() {
+      docsListContainer.innerHTML = '';
+      if (activeKnowledgeDocs.length === 0) {
+        const emptyNotice = document.createElement('div');
+        emptyNotice.textContent = 'No files loaded yet. Click "Select Folder" above to read your study materials.';
+        emptyNotice.style.cssText = 'font-size: 11px; color: #64748b; font-style: italic; text-align: center; padding: 8px 0;';
+        docsListContainer.appendChild(emptyNotice);
+        return;
+      }
+
+      activeKnowledgeDocs.forEach(doc => {
+        const card = document.createElement('div');
+        card.style.cssText = 'background: #0f172a; border: 1px solid #334155; border-radius: 5px; padding: 6px 8px; display: flex; justify-content: space-between; align-items: center; gap: 6px;';
+
+        const infoCol = document.createElement('div');
+        infoCol.style.cssText = 'display: flex; flex-direction: column; gap: 2px; overflow: hidden;';
+
+        let badgeBg = '#1e40af';
+        let badgeColor = '#93c5fd';
+        let badgeText = 'DOCX';
+        if (doc.type === 'pdf') {
+          badgeBg = '#9f1239';
+          badgeColor = '#fecdd3';
+          badgeText = 'PDF';
+        } else if (doc.type.includes('ppt')) {
+          badgeBg = '#c2410c';
+          badgeColor = '#fed7aa';
+          badgeText = 'PPT';
+        } else if (doc.type === 'txt' || doc.type === 'md') {
+          badgeBg = '#065f46';
+          badgeColor = '#a7f3d0';
+          badgeText = doc.type.toUpperCase();
+        }
+
+        const titleRow = document.createElement('div');
+        titleRow.style.cssText = 'display: flex; align-items: center; gap: 5px;';
+
+        const typeBadge = document.createElement('span');
+        typeBadge.textContent = badgeText;
+        typeBadge.style.cssText = `background: ${badgeBg}; color: ${badgeColor}; padding: 1px 4px; border-radius: 3px; font-size: 9px; font-weight: 700;`;
+
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = doc.name;
+        nameSpan.title = doc.name;
+        nameSpan.style.cssText = 'font-size: 11px; font-weight: 600; color: #f8fafc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px;';
+
+        titleRow.appendChild(typeBadge);
+        titleRow.appendChild(nameSpan);
+
+        const subSpan = document.createElement('span');
+        const unit = doc.type.includes('ppt') ? 'slides' : 'pages';
+        subSpan.textContent = `${doc.slideOrPageCount} ${unit} • ~${(doc.wordCount || 0).toLocaleString()} words • ${Math.round((doc.size || 0)/1024)} KB`;
+        subSpan.style.cssText = 'font-size: 10px; color: #94a3b8;';
+
+        infoCol.appendChild(titleRow);
+        infoCol.appendChild(subSpan);
+
+        const actionsCol = document.createElement('div');
+        actionsCol.style.cssText = 'display: flex; gap: 4px; align-items: center; flex-shrink: 0;';
+
+        const viewBtn = document.createElement('button');
+        viewBtn.textContent = '👁️';
+        viewBtn.title = 'Preview extracted document text';
+        viewBtn.style.cssText = 'background: #1e293b; color: #38bdf8; border: 1px solid #0284c7; padding: 3px 6px; border-radius: 4px; font-size: 11px; cursor: pointer;';
+        viewBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          previewTitle.textContent = `📄 Preview: ${doc.name} (${doc.slideOrPageCount} ${unit})`;
+          previewBody.textContent = (doc.text || (doc.chunks || []).map(c => c.text).join('\n\n') || 'No plain text extracted.').slice(0, 8000);
+          previewDrawer.style.display = 'flex';
+          previewDrawer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        });
+
+        const delBtn = document.createElement('button');
+        delBtn.textContent = '✕';
+        delBtn.title = 'Remove this file';
+        delBtn.style.cssText = 'background: #1e293b; color: #f87171; border: 1px solid #7f1d1d; padding: 3px 6px; border-radius: 4px; font-size: 11px; cursor: pointer;';
+        delBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          removeKnowledgeDoc(doc.id);
+          renderKnowledgeToggleText();
+        });
+
+        actionsCol.appendChild(viewBtn);
+        actionsCol.appendChild(delBtn);
+
+        card.appendChild(infoCol);
+        card.appendChild(actionsCol);
+        docsListContainer.appendChild(card);
+      });
+    }
+
+    updateHUDKnowledgeListFn = () => {
+      renderDocsList();
+      renderKnowledgeToggleText();
+      if (typeof updateSolverCards === 'function') {
+        updateSolverCards();
+      }
+    };
+
+    knowledgeToggleBtn.addEventListener('click', () => {
+      const isExp = knowledgeContainer.style.display === 'flex';
+      knowledgeContainer.style.display = isExp ? 'none' : 'flex';
+      renderKnowledgeToggleText();
+    });
+
+    knowledgeContainer.appendChild(folderInput);
+    knowledgeContainer.appendChild(filesInput);
+    knowledgeContainer.appendChild(filesFolderNotice);
+    knowledgeContainer.appendChild(knowledgeActionsRow);
+    knowledgeContainer.appendChild(modeRow);
+    knowledgeContainer.appendChild(dropZone);
+    knowledgeContainer.appendChild(docsListContainer);
+    knowledgeContainer.appendChild(previewDrawer);
+    knowledgeContainer.appendChild(testSearchWrapper);
+
+    renderKnowledgeToggleText();
+    renderDocsList();
+
     // 9. Action Buttons Row (Solve Questions, Stop)
     const btnRow = document.createElement('div');
     btnRow.style.cssText = 'display: flex; gap: 8px;';
@@ -2690,82 +3860,216 @@
     statusBox.textContent = 'Ready. Press Alt+H or F2 to toggle HUD.';
     statusBox.style.cssText = 'min-height: 48px; background: #020617; border: 1px solid #1e293b; border-radius: 6px; padding: 8px 10px; color: #94a3b8; overflow-y: auto; max-height: 120px; font-family: monospace; font-size: 11px; white-space: pre-wrap; line-height: 1.4;';
 
-    // Assemble Body
-    body.appendChild(providerSection);
-    body.appendChild(keySection);
-    body.appendChild(urlSection);
-    body.appendChild(modelSection);
-    body.appendChild(tokenSection);
-    body.appendChild(stealthSection);
-    body.appendChild(pacingSection);
-    body.appendChild(likertSection);
-    body.appendChild(saveBtn);
-    body.appendChild(profileToggleBtn);
-    body.appendChild(profileContainer);
-    body.appendChild(btnRow);
-    body.appendChild(statusLabel);
-    body.appendChild(statusBox);
+    // ==========================================
+    // 11. MULTI-VIEW HUD ARCHITECTURE
+    // ==========================================
 
+    // View 1: Solver (Main Cockpit)
+    viewSolver = document.createElement('div');
+    viewSolver.id = 'ai-view-solver';
+    viewSolver.style.cssText = 'display: flex; flex-direction: column; gap: 10px;';
+
+    // Summary Quick-Jump Cards
+    const summaryCards = document.createElement('div');
+    summaryCards.id = 'ai-solver-summary-cards';
+    summaryCards.style.cssText = 'display: flex; flex-direction: column; gap: 6px;';
+
+    // 1. Model Summary Card
+    const modelCard = document.createElement('div');
+    modelCard.id = 'ai-card-model';
+    modelCard.style.cssText = 'background: #0f172a; border: 1px solid #1e293b; border-radius: 6px; padding: 8px 10px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.15s;';
+    modelCard.title = 'Click to open AI Engine & Model Settings';
+    modelCard.onmouseover = () => { modelCard.style.borderColor = '#3b82f6'; modelCard.style.background = '#1e293b'; };
+    modelCard.onmouseout = () => { modelCard.style.borderColor = '#1e293b'; modelCard.style.background = '#0f172a'; };
+    modelCard.addEventListener('click', () => switchTab('settings'));
+
+    // 2. Study Files Summary Card
+    const studyCard = document.createElement('div');
+    studyCard.id = 'ai-card-study';
+    studyCard.style.cssText = 'background: #0f172a; border: 1px solid #1e293b; border-radius: 6px; padding: 8px 10px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.15s;';
+    studyCard.title = 'Click to open dedicated Study Materials HUD';
+    studyCard.onmouseover = () => { studyCard.style.borderColor = '#6366f1'; studyCard.style.background = '#1e293b'; };
+    studyCard.onmouseout = () => { studyCard.style.borderColor = '#1e293b'; studyCard.style.background = '#0f172a'; };
+    studyCard.addEventListener('click', () => switchTab('study'));
+
+    // 3. Persona Summary Card
+    const personaCard = document.createElement('div');
+    personaCard.id = 'ai-card-persona';
+    personaCard.style.cssText = 'background: #0f172a; border: 1px solid #1e293b; border-radius: 6px; padding: 8px 10px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.15s;';
+    personaCard.title = 'Click to view or edit Autofill Persona';
+    personaCard.onmouseover = () => { personaCard.style.borderColor = '#10b981'; personaCard.style.background = '#1e293b'; };
+    personaCard.onmouseout = () => { personaCard.style.borderColor = '#1e293b'; personaCard.style.background = '#0f172a'; };
+    personaCard.addEventListener('click', () => switchTab('profile'));
+
+    summaryCards.appendChild(modelCard);
+    summaryCards.appendChild(studyCard);
+    summaryCards.appendChild(personaCard);
+
+    viewSolver.appendChild(summaryCards);
+    viewSolver.appendChild(btnRow);
+    viewSolver.appendChild(statusLabel);
+    viewSolver.appendChild(statusBox);
+
+    // View 2: Study Materials HUD (Dedicated View)
+    viewStudy = document.createElement('div');
+    viewStudy.id = 'ai-view-study';
+    viewStudy.style.cssText = 'display: none; flex-direction: column; gap: 10px; width: 100%; box-sizing: border-box;';
+
+    const studyHeaderBar = document.createElement('div');
+    studyHeaderBar.style.cssText = 'font-size: 12px; font-weight: 700; color: #c7d2fe; display: flex; align-items: center; gap: 6px; border-bottom: 1px solid #1e293b; padding-bottom: 6px; margin-bottom: 2px; width: 100%; box-sizing: border-box;';
+    studyHeaderBar.innerHTML = '<span>📚</span> Study Materials & Knowledge HUD';
+
+    knowledgeContainer.style.display = 'flex';
+    knowledgeContainer.style.background = 'transparent';
+    knowledgeContainer.style.border = 'none';
+    knowledgeContainer.style.padding = '0';
+    knowledgeContainer.style.maxHeight = 'none';
+    knowledgeContainer.style.overflow = 'visible';
+    knowledgeContainer.style.width = '100%';
+    knowledgeContainer.style.boxSizing = 'border-box';
+
+    viewStudy.appendChild(studyHeaderBar);
+    viewStudy.appendChild(knowledgeContainer);
+
+    // View 3: Settings HUD (AI Provider, API Keys, Models, Reasoning, Stealth, Pacing, Likert)
+    viewSettings = document.createElement('div');
+    viewSettings.id = 'ai-view-settings';
+    viewSettings.style.cssText = 'display: none; flex-direction: column; gap: 10px; width: 100%; box-sizing: border-box;';
+
+    const settingsHeaderBar = document.createElement('div');
+    settingsHeaderBar.style.cssText = 'font-size: 12px; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 6px; border-bottom: 1px solid #1e293b; padding-bottom: 6px; margin-bottom: 2px; width: 100%; box-sizing: border-box;';
+    settingsHeaderBar.innerHTML = '<span>⚙️</span> AI Engine & Behavior Settings';
+
+    viewSettings.appendChild(settingsHeaderBar);
+    viewSettings.appendChild(providerSection);
+    viewSettings.appendChild(keySection);
+    viewSettings.appendChild(urlSection);
+    viewSettings.appendChild(modelSection);
+    viewSettings.appendChild(webSearchSection);
+    viewSettings.appendChild(tokenSection);
+    viewSettings.appendChild(stealthSection);
+    viewSettings.appendChild(pacingSection);
+    viewSettings.appendChild(likertSection);
+    viewSettings.appendChild(saveBtn);
+
+    // View 4: Profile HUD (Autofill Persona and Details)
+    viewProfile = document.createElement('div');
+    viewProfile.id = 'ai-view-profile';
+    viewProfile.style.cssText = 'display: none; flex-direction: column; gap: 10px; width: 100%; box-sizing: border-box;';
+
+    const profileHeaderBar = document.createElement('div');
+    profileHeaderBar.style.cssText = 'font-size: 12px; font-weight: 700; color: #a7f3d0; display: flex; align-items: center; gap: 6px; border-bottom: 1px solid #1e293b; padding-bottom: 6px; margin-bottom: 2px; width: 100%; box-sizing: border-box;';
+    profileHeaderBar.innerHTML = '<span>👤</span> Autofill Profile & Personas';
+
+    profileContainer.style.display = 'flex';
+    profileContainer.style.background = 'transparent';
+    profileContainer.style.border = 'none';
+    profileContainer.style.padding = '0';
+    profileContainer.style.maxHeight = 'none';
+    profileContainer.style.overflow = 'visible';
+    profileContainer.style.width = '100%';
+    profileContainer.style.boxSizing = 'border-box';
+
+    viewProfile.appendChild(profileHeaderBar);
+    viewProfile.appendChild(profileContainer);
+
+    // Assemble Body with the 4 Dedicated Views
+    body.appendChild(viewSolver);
+    body.appendChild(viewStudy);
+    body.appendChild(viewSettings);
+    body.appendChild(viewProfile);
+
+    // Assemble HUD Panel with Header, Tab Bar, and Body
     hudPanel.appendChild(header);
+    hudPanel.appendChild(navTabBar);
     hudPanel.appendChild(body);
+
+    // Dynamic update helper for Cockpit summary cards
+    updateSolverCards = () => {
+      const activeModelName = modelSelect ? (modelSelect.value || 'gemini-2.5-pro') : 'gemini-2.5-pro';
+      const docCount = activeKnowledgeDocs.length;
+      const totalWords = activeKnowledgeDocs.reduce((acc, d) => acc + (d.wordCount || 0), 0);
+      const modeVal = modeSelect ? modeSelect.value : 'strict';
+      const modeLabel = modeVal === 'strict' ? 'Strict Grounding' : modeVal === 'balanced' ? 'Balanced RAG' : 'Off';
+      const currentPersona = fFullName && fFullName.inp && fFullName.inp.value ? fFullName.inp.value.trim() : (typeof activePersona !== 'undefined' && activePersona ? activePersona.fullName : 'Bea De Leon');
+
+      modelCard.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <span style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; font-weight: 700;">Active AI Model</span>
+          <span style="font-size: 12px; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 4px;">⚡ <span>${activeModelName}</span></span>
+        </div>
+        <span style="background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3); color: #38bdf8; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px;">⚙️ Settings ›</span>
+      `;
+
+      studyCard.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <span style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; font-weight: 700;">Study Files & RAG</span>
+          <span style="font-size: 12px; font-weight: 700; color: ${docCount > 0 ? '#a7f3d0' : '#c7d2fe'}; display: flex; align-items: center; gap: 4px;">
+            📚 <span>${docCount > 0 ? `${docCount} Docs (~${(totalWords/1000).toFixed(1)}k words)` : 'Folder Empty (files/)'}</span>
+            <span style="font-size: 10px; opacity: 0.8; font-weight: 500; color: #94a3b8;">• ${modeLabel}</span>
+          </span>
+        </div>
+        <span style="background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); color: #818cf8; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px;">📁 Manage ›</span>
+      `;
+
+      personaCard.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <span style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; font-weight: 700;">Autofill Profile</span>
+          <span style="font-size: 12px; font-weight: 700; color: #cbd5e1; display: flex; align-items: center; gap: 4px;">👤 <span>${currentPersona.slice(0, 22)}</span></span>
+        </div>
+        <span style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); color: #34d399; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px;">👤 Edit ›</span>
+      `;
+    };
 
     hudContainer.appendChild(hudFloatingButton);
     hudContainer.appendChild(hudPanel);
     targetParent.appendChild(hudContainer);
     makeDraggable(hudContainer, header);
 
-    // Provider switch listener
-    providerSelect.addEventListener('change', () => {
-      const pId = providerSelect.value;
-      const prov = PROVIDERS[pId] || PROVIDERS.gemini;
-      keyLabel.textContent = `${prov.name} API Key`;
-      keyInput.placeholder = `Paste ${prov.name} API key here`;
-      keyInput.value = getSafeValue(`${prov.id}_api_key`, prov.defaultKey || '');
-      urlInput.value = getSafeValue(`${prov.id}_base_url`, prov.baseUrl);
-      if (keyProviderLink) {
-        keyProviderLink.href = prov.keyUrl || 'https://aistudio.google.com/app/apikey';
-        keyProviderLink.textContent = `🔑 Get ${prov.name.split(' ')[0]} Key ↗`;
-      }
-      if (keyHelpHint) {
-        keyHelpHint.textContent = prov.keyHelp || `Keys available at ${prov.baseUrl}`;
-      }
-      const savedM = getSafeValue(`${prov.id}_model`, prov.defaultModel);
-      populateModels(pId, savedM);
-      setStatus(`Switched provider to: ${prov.name}`);
-    });
-
     minBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       isMinimized = true;
       updateHUDState();
     });
+    minBtn.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      isMinimized = true;
+      updateHUDState();
+    });
+
+    if (typeof window !== 'undefined') {
+      const handleMobileResize = () => {
+        if (!isMinimized && hudContainer) {
+          const vpW = window.visualViewport ? window.visualViewport.width : window.innerWidth;
+          if (vpW <= 480) {
+            hudContainer.style.setProperty('left', 'max(8px, env(safe-area-inset-left, 8px))', 'important');
+            hudContainer.style.setProperty('right', 'max(8px, env(safe-area-inset-right, 8px))', 'important');
+            hudContainer.style.setProperty('width', 'calc(100vw - 16px)', 'important');
+            hudContainer.style.setProperty('max-width', 'calc(100vw - 16px)', 'important');
+          }
+        }
+      };
+      window.addEventListener('resize', handleMobileResize, { passive: true });
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', handleMobileResize, { passive: true });
+      }
+    }
 
     // Load saved settings
-    const savedProvider = getSafeValue('ai_provider', DEFAULT_PROVIDER);
-    if (PROVIDERS[savedProvider]) {
-      providerSelect.value = savedProvider;
-    }
+    keyInput.value = getSafeValue('anymodel_api_key', DEFAULT_API_KEY);
+    urlInput.value = getSafeValue('anymodel_base_url', DEFAULT_BASE_URL);
+    const savedModel = getSafeValue('anymodel_model', DEFAULT_MODEL);
+    populateModels(savedModel);
 
-    const curProv = PROVIDERS[providerSelect.value] || PROVIDERS.gemini;
-    keyLabel.textContent = `${curProv.name} API Key`;
-    keyInput.placeholder = `Paste ${curProv.name} API key here`;
-    keyInput.value = getSafeValue(`${curProv.id}_api_key`, curProv.defaultKey || '');
-    urlInput.value = getSafeValue(`${curProv.id}_base_url`, curProv.baseUrl);
-    if (keyProviderLink) {
-      keyProviderLink.href = curProv.keyUrl || 'https://aistudio.google.com/app/apikey';
-      keyProviderLink.textContent = `🔑 Get ${curProv.name.split(' ')[0]} Key ↗`;
-    }
-    if (keyHelpHint) {
-      keyHelpHint.textContent = curProv.keyHelp || `Keys available at ${curProv.baseUrl}`;
-    }
-    const savedModel = getSafeValue(`${curProv.id}_model`, curProv.defaultModel);
-    populateModels(curProv.id, savedModel);
+    const savedWebSearch = getSafeValue('web_search_mode', 'auto');
+    webSearchSelect.value = WEB_SEARCH_MODES.some(w => w.id === savedWebSearch) ? savedWebSearch : 'auto';
 
-    const savedTokenBudget = getSafeValue('token_budget', '2048');
-    if (savedTokenBudget && TOKEN_MODES.some(t => String(t.maxTokens) === savedTokenBudget)) {
-      tokenSelect.value = savedTokenBudget;
+    const savedTokenBudget = getSafeValue('token_budget', '0');
+    if (savedTokenBudget !== null && TOKEN_MODES.some(t => String(t.maxTokens) === String(savedTokenBudget))) {
+      tokenSelect.value = String(savedTokenBudget);
     } else {
-      tokenSelect.value = '2048';
+      tokenSelect.value = '0';
     }
 
     const savedStealth = getSafeValue('hud_stealth_level', 'phantom');
@@ -2781,33 +4085,45 @@
     const savedLikert = getSafeValue('likert_bias_mode', 'positive');
     likertSelect.value = LIKERT_BIAS_MODES.some(b => b.id === savedLikert) ? savedLikert : 'positive';
 
+    // Load any cached study documents from local storage into HUD on startup
+    loadKnowledgeDocsFromStorage();
+    if (typeof updateHUDKnowledgeListFn === 'function') {
+      updateHUDKnowledgeListFn();
+    }
+
+    // Auto-scan and ingest any files placed in the extension's dedicated "files/" folder
+    loadFilesFromExtensionFolder(false);
 
     // Default to minimized phantom stealth mode on load/refresh
     isMinimized = true;
     updateHUDState();
 
-
-    setStatus(`Ready: ${curProv.name} (${modelSelect.value})`);
+    setStatus(`Ready: AnyModel (${modelSelect.value})`);
+    if (typeof updateSolverCards === 'function') {
+      updateSolverCards();
+    }
 
     saveBtn.addEventListener('click', () => {
-      const pId = providerSelect.value;
-      const prov = PROVIDERS[pId] || PROVIDERS.gemini;
-      const keyVal = keyInput.value.trim();
-      const urlVal = urlInput.value.trim() || prov.baseUrl;
+      const keyVal = keyInput.value.trim() || DEFAULT_API_KEY;
+      const urlVal = urlInput.value.trim() || DEFAULT_BASE_URL;
       const modelVal = modelSelect.value;
+      const webSearchVal = webSearchSelect.value;
       const stealthVal = stealthSelect.value;
       const tokenVal = tokenSelect.value;
       const pacingVal = pacingSelect.value;
       const likertVal = likertSelect.value;
+      const groundingModeVal = modeSelect.value;
 
-      setSafeValue('ai_provider', pId);
-      setSafeValue(`${pId}_api_key`, keyVal);
-      setSafeValue(`${pId}_base_url`, urlVal);
-      setSafeValue(`${pId}_model`, modelVal);
+      setSafeValue('ai_provider', 'anymodel');
+      setSafeValue('anymodel_api_key', keyVal);
+      setSafeValue('anymodel_base_url', urlVal);
+      setSafeValue('anymodel_model', modelVal);
+      setSafeValue('web_search_mode', webSearchVal);
       setSafeValue('token_budget', tokenVal);
       setSafeValue('hud_stealth_level', stealthVal);
       setSafeValue('pacing_mode', pacingVal);
       setSafeValue('likert_bias_mode', likertVal);
+      setSafeValue('grounding_mode', groundingModeVal);
 
       // Update floating button appearance
       const curS = getStealthSettings();
@@ -2817,9 +4133,10 @@
       hudFloatingButton.style.boxShadow = curS.shadow;
       hudFloatingButton.style.opacity = curS.opacity;
 
-      updateFloatingButtonBadge();
-      showToastNotification(`✅ Settings saved for ${prov.name}!`, true);
-      setStatus(`Saved: ${prov.name} | ${modelVal} | ${pacingVal} pacing | ${likertVal} bias`);
+      setStatus(`Saved: AnyModel | ${modelVal} | 📚 Grounding: ${groundingModeVal} | 🔍 Google Search: ${webSearchVal} | ${pacingVal} pacing`);
+      if (typeof updateSolverCards === 'function') {
+        updateSolverCards();
+      }
     });
 
     solveBtn.addEventListener('click', () => {
@@ -2835,6 +4152,11 @@
       cleanupProcessingState();
       setStatus('Stopping solver... Multi-page auto-continuation cancelled.');
     });
+
+    // Auto-Rotate on fresh page mount so the persona is already randomized for this form
+    if (isAutoRotateEnabled() && !isAutoSolvingStateActive() && !getSavedMultiPagePersona()) {
+      rotatePersona(true);
+    }
 
     console.log('[Google Form AI HUD] HUD mounted and visible.');
   }
@@ -2857,22 +4179,80 @@
     }
   }
 
-  function getBase64FromImageUrl(url) {
+  // Weak-Cellular Vision Compressor: Scales down large images to max 800px & 0.65 JPEG quality
+  // Reduces upload payload from ~5 MB to ~40 KB (98% bandwidth savings), preventing cellular timeouts
+  function compressImageForVision(dataUri, maxDim = 800, quality = 0.65) {
     return new Promise((resolve) => {
-      if (!url) return resolve(null);
+      if (!dataUri || typeof document === 'undefined') return resolve(null);
+      try {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          try {
+            let width = img.naturalWidth || img.width;
+            let height = img.naturalHeight || img.height;
+            if (!width || !height) return resolve(null);
 
-      if (url.startsWith('data:')) {
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round((height * maxDim) / width);
+                width = maxDim;
+              } else {
+                width = Math.round((width * maxDim) / height);
+                height = maxDim;
+              }
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return resolve(null);
+
+            // Fill white background for transparent PNGs/SVGs
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, width, height);
+            ctx.drawImage(img, 0, 0, width, height);
+
+            const compressedUri = canvas.toDataURL('image/jpeg', quality);
+            const parts = compressedUri.split(',');
+            if (parts.length === 2) {
+              resolve({ mimeType: 'image/jpeg', data: parts[1] });
+            } else {
+              resolve(null);
+            }
+          } catch (e) {
+            resolve(null);
+          }
+        };
+        img.onerror = () => resolve(null);
+        img.src = dataUri;
+      } catch (err) {
+        resolve(null);
+      }
+    });
+  }
+
+  function getBase64FromImageUrl(url) {
+    if (!url) return Promise.resolve(null);
+
+    if (url.startsWith('data:')) {
+      return compressImageForVision(url, 800, 0.65).then((compressed) => {
+        if (compressed) return compressed;
         const match = url.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
         if (match) {
-          return resolve({ mimeType: match[1], data: match[2] });
+          return { mimeType: match[1], data: match[2] };
         }
-        return resolve(null);
-      }
+        return null;
+      });
+    }
 
+    return new Promise((resolve) => {
       httpRequest({
         method: 'GET',
         url: url,
-        responseType: 'blob'
+        responseType: 'blob',
+        timeout: 25000
       }).then((response) => {
         if (response.status !== 200 || !response.response) return resolve(null);
         try {
@@ -2882,9 +4262,12 @@
             blobData = new Blob([blobData], { type: rawMime });
           }
           const reader = new FileReader();
-          reader.onloadend = function () {
+          reader.onloadend = async function () {
             const res = reader.result;
             if (typeof res === 'string') {
+              const compressed = await compressImageForVision(res, 800, 0.65);
+              if (compressed) return resolve(compressed);
+
               const parts = res.split(',');
               if (parts.length === 2) {
                 const detectedMime = parts[0].match(/:(.*?);/)?.[1] || rawMime;
@@ -2899,6 +4282,32 @@
           resolve(null);
         }
       }).catch(() => resolve(null));
+    });
+  }
+
+  // Cellular Connection Sentinel: pauses execution if signal drops to 0 bars/offline
+  function waitForCellularSignal() {
+    return new Promise((resolve) => {
+      if (typeof navigator === 'undefined' || navigator.onLine !== false) {
+        return resolve(true);
+      }
+      setStatus('📶 Cellular signal lost! Solver paused holding position...');
+      const handleOnline = () => {
+        window.removeEventListener('online', handleOnline);
+        setStatus('📶 Cellular signal restored! Resuming solver...');
+        resolve(true);
+      };
+      window.addEventListener('online', handleOnline);
+    });
+  }
+
+  // Global listeners for live cellular status updates in HUD
+  if (typeof window !== 'undefined') {
+    window.addEventListener('offline', () => {
+      setStatus('📶 [Network Disconnected] Cellular signal lost. Auto-pause armed.');
+    });
+    window.addEventListener('online', () => {
+      setStatus('📶 [Network Reconnected] Cellular signal online.');
     });
   }
 
@@ -2942,30 +4351,189 @@
     return null;
   }
 
-  // Universal API Caller supporting OpenAI-compatible endpoints & Native Gemini with Auto-Failover
-  function callGeminiAPI(apiKey, model, promptText, base64Images = [], maxOutputTokens = 2048, isRetry = false) {
-    return new Promise((resolve, reject) => {
-      const savedProvider = getSafeValue('ai_provider', DEFAULT_PROVIDER);
-      const prov = PROVIDERS[savedProvider] || PROVIDERS.anymodel;
+  // Live Google Search Grounding Engine: queries Google Search directly for real-time ground truth
+  async function fetchGoogleSearchEvidence(questionTitle, questionFullText, choiceLabels = []) {
+    try {
+      const searchMode = getSafeValue('web_search_mode', 'auto');
+      if (searchMode === 'off') return null;
 
-      const activeKey = (apiKey || getSafeValue(`${prov.id}_api_key`, prov.defaultKey || '')).trim();
-      const activeModel = (model || getSafeValue(`${prov.id}_model`, prov.defaultModel)).trim();
-      const baseUrl = (getSafeValue(`${prov.id}_base_url`, prov.baseUrl)).trim().replace(/\/+$/, '');
-
-      if (!activeKey) {
-        return reject(new Error(`Missing ${prov.name} API key. Please enter your API key in the HUD.`));
+      // If choices look like subjective Likert scale (Agree/Disagree) and mode is auto, skip web search
+      if (searchMode === 'auto' && choiceLabels.length > 0 && isLikertOrScaleLabels(choiceLabels)) {
+        return null;
       }
 
-      const isOpenAI = prov.isOpenAI || activeKey.startsWith('sk-') || baseUrl.includes('/v1') || !baseUrl.includes('googleapis.com');
-      const savedBudget = parseInt(getSafeValue('token_budget', '2048'), 10) || 2048;
-      const tokenBudget = Math.max(maxOutputTokens || 60, savedBudget);
+      // Formulate clean search query: extract core question text without form boilerplate
+      let cleanQuery = (questionTitle || questionFullText || '')
+        .replace(/[\n\r]+/g, ' ')
+        .replace(/\b(kailangan ang tanong na ito|this is a required question|required|choose one|pumili|select all that apply|check all that apply|mark only one oval)\b/gi, '')
+        .replace(/[?*:"'(){}[\]]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
 
-      // Auto-failover helper for AnyModel
+      if (cleanQuery.length < 5) return null;
+      if (cleanQuery.length > 150) {
+        cleanQuery = cleanQuery.slice(0, 150).trim();
+      }
+
+      const results = [];
+      let directAnswer = null;
+
+      // 1. Direct Google Search query
+      try {
+        const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(cleanQuery)}&hl=en&num=6`;
+        const googleRes = await httpRequest({
+          method: 'GET',
+          url: googleUrl,
+          headers: {
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9'
+          },
+          timeout: 8000
+        });
+
+        const html = googleRes?.responseText || googleRes?.text || googleRes?.response || '';
+        if (html && typeof DOMParser !== 'undefined') {
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+
+          // A. Google Featured Snippets & Direct Answers (Knowledge Cards, Definitions, Formulas)
+          const answerSelectors = [
+            '.hgKElc', // Bolded featured snippet text
+            '.Z0LcW', // Direct answer heading (dates, names, places)
+            '[data-attrid="wa:/description"]',
+            '.kno-rdesc', // Knowledge panel description
+            '.vk_bk', // Quick fact bold text
+            '.kp-header',
+            '.BNeawe.iBp4i.AP7Wnd', // Mobile direct answer
+            '.dDoNo', // Direct answer card
+            '.LGOjhe' // Q&A featured snippet card
+          ];
+          for (const sel of answerSelectors) {
+            const el = doc.querySelector(sel);
+            if (el) {
+              const txt = el.innerText.trim();
+              if (txt.length > 5 && !txt.toLowerCase().includes('google') && !txt.toLowerCase().includes('cookie')) {
+                directAnswer = txt;
+                break;
+              }
+            }
+          }
+
+          // B. Google Search Result Cards (Desktop + Mobile)
+          const cardSelectors = ['.tF2Cxc', '.g', '.MjjYud', '.xpd', 'div[data-hveid]'];
+          const cards = doc.querySelectorAll(cardSelectors.join(', '));
+          for (const card of cards) {
+            if (results.length >= 4) break;
+            const titleEl = card.querySelector('h3, div[role="heading"], .vvjwJb');
+            const snippetEl = card.querySelector('.VwiC3b, .yXK7lf, [style*="-webkit-line-clamp"], .BNeawe.s3v9rd.AP7Wnd, .MUxGbd');
+            if (titleEl && snippetEl) {
+              const title = titleEl.innerText.trim();
+              const snippet = snippetEl.innerText.trim();
+              if (snippet.length > 15 && !snippet.toLowerCase().includes('cookie') && !results.some(r => r.title === title)) {
+                results.push({ title, snippet });
+              }
+            }
+          }
+
+          // C. Fallback: Parse all snippet elements if container classes varied
+          if (results.length === 0) {
+            const rawSnippets = doc.querySelectorAll('.VwiC3b, .BNeawe.s3v9rd.AP7Wnd, .s3v9rd');
+            for (const el of rawSnippets) {
+              if (results.length >= 4) break;
+              const txt = el.innerText.trim();
+              if (txt.length > 25 && !txt.toLowerCase().includes('google') && !txt.toLowerCase().includes('cookie') && !results.some(r => r.snippet === txt)) {
+                results.push({ title: 'Google Web Result', snippet: txt });
+              }
+            }
+          }
+        }
+      } catch (gErr) {
+        console.debug('[Google Form AI HUD] Google direct search skipped:', gErr.message);
+      }
+
+      // 2. Google Suggest / Complete API fallback if HTML parsing was empty
+      if (results.length === 0 && !directAnswer) {
+        try {
+          const suggestUrl = `https://suggestqueries.google.com/complete/search?client=chrome&q=${encodeURIComponent(cleanQuery)}`;
+          const sRes = await httpRequest({ method: 'GET', url: suggestUrl, timeout: 4000 });
+          if (sRes && (sRes.responseText || sRes.response)) {
+            const sData = JSON.parse(sRes.responseText || sRes.response || '[]');
+            const suggestions = sData[1] || [];
+            if (suggestions.length > 0) {
+              results.push({
+                title: 'Google Top Suggestions',
+                snippet: suggestions.slice(0, 3).join(' | ')
+              });
+            }
+          }
+        } catch (sErr) {
+          console.debug('[Google Form AI HUD] Google suggest skipped:', sErr.message);
+        }
+      }
+
+      if (results.length === 0 && !directAnswer) return null;
+
+      let formatted = `--- 🔍 LIVE GOOGLE SEARCH GROUND TRUTH (REAL-TIME) ---
+Google Search Query: "${cleanQuery}"
+`;
+      if (directAnswer) {
+        formatted += `Google Featured / Direct Answer: ${directAnswer}\n`;
+      }
+      if (results.length > 0) {
+        formatted += `Top Google Web Results:\n` + results.map((r, i) => `[${i + 1}] ${r.title}: ${r.snippet}`).join('\n') + '\n';
+      }
+      formatted += `------------------------------------------------------
+CRITICAL GOOGLE SEARCH DIRECTIVE:
+1. Cross-examine the question and EVERY candidate option directly against the Live Google Search Ground Truth above.
+2. Select the option that is confirmed correct by Google Search.
+3. Eliminate distractors and trick choices. Do NOT guess or hallucinate.
+`;
+      return formatted;
+    } catch (err) {
+      console.warn('[Google Form AI HUD] Google search grounding error:', err);
+      return null;
+    }
+  }
+
+  // Alias to ensure full backward compatibility
+  const fetchWebSearchEvidence = fetchGoogleSearchEvidence;
+
+  // Single attempt caller dedicated to AnyModel (OpenAI standard) with Smart Auto-Healing Cascade
+  function callGeminiAPISingle(apiKey, model, promptText, base64Images = [], maxOutputTokens = 0, isRetry = false) {
+    return new Promise((resolve, reject) => {
+      const activeKey = (apiKey || getSafeValue('anymodel_api_key', DEFAULT_API_KEY)).trim();
+      const activeModel = (model || getSafeValue('anymodel_model', DEFAULT_MODEL)).trim();
+      const baseUrl = (getSafeValue('anymodel_base_url', DEFAULT_BASE_URL)).trim().replace(/\/+$/, '');
+
+      if (!activeKey) {
+        return reject(new Error('Missing AnyModel API key. Please enter your API key in the HUD.'));
+      }
+
+      const savedBudgetRaw = getSafeValue('token_budget', '0');
+      let tokenBudget = parseInt(savedBudgetRaw, 10);
+      if (isNaN(tokenBudget) || savedBudgetRaw === 'unlimited') {
+        tokenBudget = 0; // 0 = Unlimited: no artificial token limit passed to API
+      }
+
+      // Smart Auto-Healing Failover for AnyModel: cascades to next verified model if one is busy/offline
       const tryFallback = (errMsg) => {
-        if (prov.id === 'anymodel' && !isRetry) {
-          const fallbackModel = activeModel.includes('low') ? 'am/free' : 'ag/gemini-3.7-flash-low';
-          setStatus(`⚠️ Model "${activeModel}" issue (${errMsg}). Auto-switching to backup model (${fallbackModel})...`);
-          return callGeminiAPI(activeKey, fallbackModel, promptText, base64Images, maxOutputTokens, true).then(resolve).catch(reject);
+        const errorStr = String(errMsg || '').toLowerCase();
+
+        // 1. If image input caused an error on a text-only model, auto-route directly to Gemini 3.7 Flash High
+        if (base64Images && base64Images.length > 0 && activeModel !== 'ag/gemini-3.7-flash-high' && !isRetry) {
+          console.warn(`[AnyModel Vision Auto-Healing] Model "${activeModel}" encountered issue with visual input (${errMsg}). Routing image question to Gemini 3.7 Flash High...`);
+          setStatus(`👁️ Auto-routing image question to Gemini 3.7 Flash High...`);
+          return callGeminiAPISingle(activeKey, 'ag/gemini-3.7-flash-high', promptText, base64Images, maxOutputTokens, true).then(resolve).catch(reject);
+        }
+
+        const modelOrder = ANYMODEL_MODELS.map(m => m.id);
+        const curIdx = modelOrder.indexOf(activeModel);
+        const nextModel = modelOrder.find((mId, idx) => idx > curIdx && mId !== activeModel) || (activeModel !== 'ag/gemini-3.7-flash-high' ? 'ag/gemini-3.7-flash-high' : 'am/free');
+
+        if (nextModel && !isRetry) {
+          console.warn(`[AnyModel Auto-Healing] Model "${activeModel}" issue (${errMsg}). Auto-switching to verified backup "${nextModel}"...`);
+          setStatus(`⚠️ AnyModel "${activeModel}" busy (${errMsg.slice(0, 50)}). Auto-switching to backup "${nextModel}"...`);
+          setSafeValue('anymodel_model', nextModel);
+          return callGeminiAPISingle(activeKey, nextModel, promptText, base64Images, maxOutputTokens, true).then(resolve).catch(reject);
         }
         reject(new Error(errMsg));
       };
@@ -2975,151 +4543,117 @@
 Your mission is to carefully read every question and provided choices, perform rigorous analytical thinking, and deliver the BEST, completely accurate, and flawless answer without making any mistakes.
 Key Rules:
 1. Read the Question Thoroughly: Analyze all parts of the question prompt, context, constraints, and all provided options. If image(s) are attached, inspect them closely to answer visual questions accurately.
-2. Academic / Factual / Technical Questions: Identify the single factually correct, logically proven answer. Do not guess.
+2. Academic / Factual / Technical Questions: Identify the single factually correct, logically proven answer. If web search evidence is attached, treat it as ground truth. Do not guess.
 3. Opinion / Survey / Likert Scale Questions: Answer authentically, thoughtfully, and consistently from the perspective of the specified student persona.
 4. Output Integrity: Always output valid, well-formed JSON matching the exact schema requested so your answer can be applied directly to the form controls.`;
 
-      if (isOpenAI) {
-        const messages = [
-          { role: 'system', content: SYSTEM_SOLVER_PROMPT }
-        ];
+      const messages = [
+        { role: 'system', content: SYSTEM_SOLVER_PROMPT }
+      ];
 
-        if (base64Images && base64Images.length > 0) {
-          const contentParts = [{ type: 'text', text: promptText }];
-          base64Images.forEach((img) => {
-            if (img && img.data) {
-              contentParts.push({
-                type: 'image_url',
-                image_url: {
-                  url: `data:${img.mimeType || 'image/jpeg'};base64,${img.data}`
-                }
-              });
-            }
-          });
-          messages.push({ role: 'user', content: contentParts });
-        } else {
-          messages.push({ role: 'user', content: promptText });
-        }
-
-        const payload = {
-          model: activeModel,
-          messages: messages,
-          temperature: 0.1,
-          max_tokens: tokenBudget
-        };
-
-        const targetUrl = `${baseUrl}/chat/completions`;
-
-        httpRequest({
-          method: 'POST',
-          url: targetUrl,
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${activeKey}`
-          },
-          data: JSON.stringify(payload),
-          timeout: 30000
-        }).then((res) => {
-          try {
-            const data = JSON.parse(res.responseText || '{}');
-            if (res.status !== 200 || data.error) {
-              const errDetail = data.error?.message || (typeof data.error === 'string' ? data.error : `HTTP ${res.status}: ${res.statusText || 'API Error'}`);
-              return tryFallback(errDetail);
-            }
-
-            if (data.usage?.total_tokens) {
-              totalTokensUsed += data.usage.total_tokens;
-            }
-
-            const choice = data.choices?.[0];
-            const msgObj = choice?.message || {};
-            const rawText = msgObj.content || data.content || '';
-            const reasoningText = msgObj.reasoning_content || choice?.reasoning || '';
-            const textToParse = (rawText && rawText.trim()) ? rawText : reasoningText;
-
-            if (!textToParse) {
-              return tryFallback('No text response returned by model');
-            }
-
-            const parsed = extractJsonPayload(textToParse);
-            if (parsed) {
-              return resolve(parsed);
-            }
-
-            // If not valid JSON, treat direct text as answer
-            return resolve({ answer: textToParse.trim() });
-          } catch (e) {
-            tryFallback(`Failed to parse AI output: ${e.message}`);
-          }
-        }).catch((err) => {
-          tryFallback(err.message || `Network error calling ${prov.name}`);
-        });
-
-      } else {
-        const parts = [{ text: promptText }];
-
+      if (base64Images && base64Images.length > 0) {
+        const contentParts = [{ type: 'text', text: promptText }];
         base64Images.forEach((img) => {
           if (img && img.data) {
-            parts.push({
-              inlineData: {
-                mimeType: img.mimeType || 'image/jpeg',
-                data: img.data
+            contentParts.push({
+              type: 'image_url',
+              image_url: {
+                url: `data:${img.mimeType || 'image/jpeg'};base64,${img.data}`
               }
             });
           }
         });
-
-        const payload = {
-          systemInstruction: {
-            parts: [{ text: SYSTEM_SOLVER_PROMPT }]
-          },
-          contents: [{ parts: parts }],
-          generationConfig: {
-            responseMimeType: 'application/json',
-            temperature: 0.1,
-            maxOutputTokens: tokenBudget
-          }
-        };
-
-        const targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(activeModel)}:generateContent?key=${encodeURIComponent(activeKey)}`;
-
-        httpRequest({
-          method: 'POST',
-          url: targetUrl,
-          headers: { 'Content-Type': 'application/json' },
-          data: JSON.stringify(payload),
-          timeout: 30000
-        }).then((res) => {
-          try {
-            const data = JSON.parse(res.responseText || '{}');
-            if (res.status !== 200 || data.error) {
-              const errDetail = data.error?.message || `HTTP ${res.status}: ${res.statusText || 'API Error'}`;
-              return reject(new Error(errDetail));
-            }
-
-            if (data.usageMetadata?.totalTokenCount) {
-              totalTokensUsed += data.usageMetadata.totalTokenCount;
-            }
-
-            const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (!rawText) {
-              return reject(new Error('No response generated by Gemini'));
-            }
-
-            const parsed = extractJsonPayload(rawText);
-            if (parsed) {
-              return resolve(parsed);
-            }
-
-            return resolve({ answer: rawText.trim() });
-          } catch (e) {
-            reject(new Error(`Failed to parse Gemini output: ${e.message}`));
-          }
-        }).catch((err) => {
-          reject(new Error(err.message || 'Network error calling Gemini'));
-        });
+        messages.push({ role: 'user', content: contentParts });
+      } else {
+        messages.push({ role: 'user', content: promptText });
       }
+
+      const payload = {
+        model: activeModel,
+        messages: messages,
+        temperature: 0.1
+      };
+
+      // When tokenBudget is 0 (Unlimited), omit max_tokens entirely to let the model output full reasoning without limit
+      if (tokenBudget > 0) {
+        payload.max_tokens = tokenBudget;
+      }
+
+      const targetUrl = `${baseUrl}/chat/completions`;
+
+      httpRequest({
+        method: 'POST',
+        url: targetUrl,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${activeKey}`
+        },
+        data: JSON.stringify(payload),
+        timeout: 45000
+      }).then((res) => {
+        try {
+          const data = JSON.parse(res.responseText || '{}');
+          if (res.status !== 200 || data.error) {
+            const errDetail = data.error?.message || (typeof data.error === 'string' ? data.error : `HTTP ${res.status}: ${res.statusText || 'API Error'}`);
+            return tryFallback(errDetail);
+          }
+
+          if (data.usage?.total_tokens) {
+            totalTokensUsed += data.usage.total_tokens;
+          }
+
+          const choice = data.choices?.[0];
+          const msgObj = choice?.message || {};
+          const rawText = msgObj.content || data.content || '';
+          const reasoningText = msgObj.reasoning_content || choice?.reasoning || '';
+          const textToParse = (rawText && rawText.trim()) ? rawText : reasoningText;
+
+          if (!textToParse) {
+            return tryFallback('No text response returned by model');
+          }
+
+          const parsed = extractJsonPayload(textToParse);
+          if (parsed) {
+            return resolve(parsed);
+          }
+
+          // If not valid JSON, treat direct text as answer
+          return resolve({ answer: textToParse.trim() });
+        } catch (e) {
+          tryFallback(`Failed to parse AI output: ${e.message}`);
+        }
+      }).catch((err) => {
+        tryFallback(err.message || 'Network error calling AnyModel');
+      });
     });
+  }
+
+  // Resilient Weak-Signal Wrapper: retries up to 3 times with exponential backoff on cellular jitter/timeouts
+  async function callGeminiAPI(apiKey, model, promptText, base64Images = [], maxOutputTokens = 0) {
+    const MAX_ATTEMPTS = 3;
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      if (shouldCancel) {
+        throw new Error('Cancelled by user');
+      }
+
+      await waitForCellularSignal();
+
+      try {
+        return await callGeminiAPISingle(apiKey, model, promptText, base64Images, maxOutputTokens);
+      } catch (err) {
+        lastError = err;
+        if (attempt < MAX_ATTEMPTS && !shouldCancel) {
+          const waitMs = attempt * 2000;
+          console.warn(`[AnyModel Cellular Shield] Attempt ${attempt}/${MAX_ATTEMPTS} failed (${err.message}). Retrying in ${waitMs / 1000}s...`);
+          setStatus(`📶 Weak cellular signal: retry ${attempt}/${MAX_ATTEMPTS} in ${waitMs / 1000}s...`);
+          await sleep(waitMs);
+        }
+      }
+    }
+
+    throw lastError || new Error('Network request failed after retries');
   }
 
   // Robust choice label extractor
@@ -3132,9 +4666,9 @@ Key Rules:
     const dataVal = el.getAttribute('data-value') || el.getAttribute('data-answer-value');
     if (dataVal && dataVal.trim()) return dataVal.trim();
 
-    const container = el.closest('label, .docssharedWizToggleLabeledContainer, [role="row"], .nWQ3rd, .SGkqEc, [role="listitem"]');
+    const container = el.closest('label, .docssharedWizToggleLabeledContainer, [role="row"], .nWQ3rd, .SGkqEc, .e3Du2d, .Y5AOUb');
     if (container) {
-      const textEl = container.querySelector('.docssharedWizToggleLabeledContent, .aDTYNe, .M7eMe, span[dir="auto"], .snByac');
+      const textEl = container.querySelector('.docssharedWizToggleLabeledContent, .aDTYNe, .snByac, .ovNFwe, .vRMGwf, span[dir="auto"]');
       let baseText = textEl && textEl.innerText.trim() ? textEl.innerText.trim() : '';
       if (!baseText) {
         const spans = container.querySelectorAll('span[dir="auto"], div[dir="auto"]');
@@ -3144,6 +4678,14 @@ Key Rules:
             break;
           }
         }
+      }
+
+      // Check if this container is an "Other:" option row
+      const isOtherContainer = container.querySelector('input[type="text"], input.Hvn9fb, input.whsOnd') ||
+                               container.getAttribute('aria-label')?.toLowerCase().includes('other') ||
+                               /\b(other|iba|lainnya|lain|otro|autre|sonstiges)\b/i.test(baseText);
+      if (isOtherContainer && (!baseText || baseText.length < 2)) {
+        baseText = 'Other:';
       }
 
       // If the option contains an image with alt or title text, append it
@@ -3329,20 +4871,34 @@ Key Rules:
   }
 
   function getQuestionInfo(block) {
-    let titleEl = block.querySelector('div[role="heading"], .M7eMe, [role="heading"], .F9N22c, .geS5n, legend, .z12JJ, .c2gzEf');
-    let title = titleEl ? titleEl.innerText.trim() : '';
+    // Specifically target the question heading elements.
+    // NEVER include parent card wrappers like .geS5n or .c2gzEf which enclose all options.
+    let titleEl = block.querySelector('.M7eMe, div[role="heading"], [role="heading"], .F9N22c, legend, .z12JJ');
+    let title = '';
 
-    if (!title) {
-      const ariaEl = block.querySelector('[aria-label], [data-initial-value]');
-      if (ariaEl) {
-        title = ariaEl.getAttribute('aria-label') || '';
+    if (titleEl) {
+      try {
+        const clone = titleEl.cloneNode(true);
+        // Remove required question asterisk and screen-reader badges
+        clone.querySelectorAll('.v3Duub, [aria-label*="Required" i], [aria-label*="kailangan" i], [role="alert"]').forEach(el => el.remove());
+        title = (clone.innerText || clone.textContent || '').trim();
+      } catch (e) {
+        title = (titleEl.innerText || titleEl.textContent || '').trim();
       }
     }
 
     if (!title) {
-      const rawText = (block.innerText || '').trim();
-      if (rawText) {
-        title = rawText.split('\n')[0].trim();
+      const headingContainer = block.querySelector('.hoUpQr, .c2gzEf');
+      if (headingContainer) {
+        const firstLine = (headingContainer.innerText || '').split('\n')[0].trim();
+        if (firstLine) title = firstLine;
+      }
+    }
+
+    if (!title) {
+      const ariaEl = block.querySelector('[aria-label]:not([role="radio"]):not([role="checkbox"]):not(input):not(textarea)');
+      if (ariaEl) {
+        title = (ariaEl.getAttribute('aria-label') || '').trim();
       }
     }
 
@@ -3350,10 +4906,19 @@ Key Rules:
       title = 'Question';
     }
 
-    // Capture all context notes, point values, instructions, and help text
-    const descEls = block.querySelectorAll('div[id$="_desc"], .g3Jh9, [role="note"], .cBGGfd, .asBE0e, .Y5AOUb, div[jsname="W11fsf"], .C2T2v, .dId02c, .V4d7Ke');
-    const descriptions = Array.from(descEls).map(el => el.innerText.trim()).filter(Boolean);
-    const description = descriptions.join('\n');
+    // Clean up any trailing asterisk indicator from required fields
+    title = title.replace(/[\s*]+$/, '').trim();
+
+    // Capture all genuine question descriptions, instructions, and help notes.
+    // Explicitly exclude option list wrappers (.oyXaNc), error alerts (.asBE0e, .RDeYad), and control containers.
+    const descEls = block.querySelectorAll('div[id$="_desc"], .g3Jh9, div[jsname="W11fsf"], [role="note"]');
+    const descriptions = Array.from(descEls).map(el => {
+      if (el.closest('.oyXaNc, [role="radiogroup"], [role="list"], .asBE0e, .RDeYad, .k39duf, [role="alert"]')) {
+        return '';
+      }
+      return (el.innerText || el.textContent || '').trim();
+    }).filter(d => Boolean(d) && d !== title);
+    const description = descriptions.join('\n').trim();
 
     let fullText = title;
     if (description) {
@@ -3548,15 +5113,29 @@ Key Rules:
       }
     }
 
-    const prompt = `Question: ${questionText}
+    const isLikert = isLikertOrScaleLabels(labels);
+    const grounding = getGroundingPrompt({ fullText: questionText, title: '' }, labels, isLikert);
+
+    if (grounding.found) {
+      setStatus(`📚 Grounded dropdown with "${grounding.primarySource}" (${grounding.count} matching excerpts, score: ${grounding.topScore})...`);
+    }
+
+    let webEvidence = '';
+    if (!isLikert && (!grounding.found || grounding.mode === 'hybrid')) {
+      setStatus(`🔍 Searching Google for quiz verification...`);
+      webEvidence = (await fetchWebSearchEvidence('', questionText, labels)) || '';
+    }
+
+    const prompt = `${grounding.prompt}${webEvidence}Question: ${questionText}
 Dropdown Options: ${JSON.stringify(labels)}
 
 Instructions:
-1. Carefully read and understand the question and all dropdown choices.
-2. Select the single best, factually correct, or most appropriate option.
-3. Think through your reasoning first before outputting the index to eliminate mistakes.
+1. Carefully read the question, any notes, and all dropdown choices.
+2. PAY CRITICAL ATTENTION to negative qualifiers like "NOT", "EXCEPT", "FALSE", or "INCORRECT". If asked what is NOT true, select the false option.
+3. Cross-reference directly with any attached document evidence or Live Google Search evidence. Eliminate distractors and trick choices.
+4. If a calculation is needed, compute it step by step in "reasoning" first.
 
-Respond with JSON: {"reasoning": "<step-by-step reasoning identifying the best option>", "chosen_index": <int, zero-based index>}`;
+Respond with JSON: {"reasoning": "<step-by-step reasoning identifying the single best option>", "chosen_index": <int, zero-based index>}`;
 
     try {
       const res = await callGeminiAPI(apiKey, model, prompt, images, 60);
@@ -3666,6 +5245,8 @@ Respond with JSON: {"reasoning": "<step-by-step reasoning identifying the best o
       return true;
     }
 
+    const checkboxOptions = block.querySelectorAll('div[role="checkbox"]');
+
     if (radioOptions.length > 0) {
       const labels = Array.from(radioOptions).map(r => getChoiceLabel(r));
       const idx = findMatchingOptionIndex(labels, matched.field, matched.value);
@@ -3673,6 +5254,19 @@ Respond with JSON: {"reasoning": "<step-by-step reasoning identifying the best o
         await safelySetToggle(radioOptions[idx], true);
         return true;
       }
+      // Never fall through to shortInput inside a multiple choice block
+      return false;
+    }
+
+    if (checkboxOptions.length > 0) {
+      const labels = Array.from(checkboxOptions).map(c => getChoiceLabel(c));
+      const idx = findMatchingOptionIndex(labels, matched.field, matched.value);
+      if (idx !== -1 && checkboxOptions[idx]) {
+        await safelySetToggle(checkboxOptions[idx], true);
+        return true;
+      }
+      // Never fall through to shortInput inside a checkbox block
+      return false;
     }
 
     if (dropdownBox) {
@@ -3693,8 +5287,10 @@ Respond with JSON: {"reasoning": "<step-by-step reasoning identifying the best o
       }
       document.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Escape', code: 'Escape', keyCode: 27 }));
       await sleep(100);
+      return false;
     }
 
+    // Only set shortInput or textarea if this question has no choice controls
     if (shortInput) {
       await setInputField(shortInput, String(matched.value));
       return true;
@@ -3992,8 +5588,10 @@ Respond with JSON: {"reasoning": "<step-by-step reasoning identifying the best o
       }
     } else {
       setSafeValue('multi_page_solving_active', 'false');
+      setSafeValue('multi_page_persona', '');
       try { sessionStorage.removeItem('form_ai_multi_page_active'); } catch (e) {}
       try { sessionStorage.removeItem('form_ai_multi_page_persona'); } catch (e) {}
+      currentSessionPersona = null;
     }
   }
 
@@ -4163,7 +5761,11 @@ Respond with JSON: {"reasoning": "<step-by-step reasoning identifying the best o
         if (!isTickBox) {
           const isColLikert = isLikertOrScaleLabels(gridData.columnHeaders);
           const biasNotice = (biasMode === 'positive' && isColLikert) ? '\nRespondent perspective: Generally favorable, positive evaluation across dimensions.' : '';
-          const prompt = `Carefully examine the grid question, full context, notes, and each row and column label.\nQuestion: ${qInfo.fullText}${biasNotice}\nColumns: ${JSON.stringify(gridData.columnHeaders)}\nRows: ${JSON.stringify(rowSummaries.map(r => r.text))}\n\nTask:\n- Match each row to its single best, factually correct, or most logical column.\n- Think through each row in "reasoning" first.\n\nRespond ONLY with JSON:\n{\n  "reasoning": "Step-by-step logic matching each row to the correct column",\n  "answers": [{"row_index": <int 0-indexed>, "chosen_index": <int 0-indexed column>}]\n}`;
+          const docGrounding = getGroundingPrompt(qInfo, gridData.columnHeaders, isColLikert);
+          if (docGrounding.found) {
+            setStatus(`[${i + 1}/${total}] 📚 Grounded grid with "${docGrounding.primarySource}"...`);
+          }
+          const prompt = `${docGrounding.prompt}Carefully examine the grid question, full context, notes, and each row and column label.\nQuestion: ${qInfo.fullText}${biasNotice}\nColumns: ${JSON.stringify(gridData.columnHeaders)}\nRows: ${JSON.stringify(rowSummaries.map(r => r.text))}\n\nTask:\n- Match each row to its single best, factually correct, or most logical column.\n- Think through each row in "reasoning" first.\n\nRespond ONLY with JSON:\n{\n  "reasoning": "Step-by-step logic matching each row to the correct column",\n  "answers": [{"row_index": <int 0-indexed>, "chosen_index": <int 0-indexed column>}]\n}`;
           const res = await callGeminiAPI(apiKey, model, prompt, images, Math.min(350, 100 + gridData.rows.length * 30));
           const answers = Array.isArray(res.answers) ? res.answers : [];
 
@@ -4191,7 +5793,11 @@ Respond with JSON: {"reasoning": "<step-by-step reasoning identifying the best o
           }
           markQuestionSolved(block);
         } else {
-          const prompt = `Carefully examine the checkbox grid question, all context, and row/column labels.\nQuestion: ${qInfo.fullText}\nColumns: ${JSON.stringify(gridData.columnHeaders)}\nRows: ${JSON.stringify(rowSummaries.map(r => r.text))}\n\nTask:\n- For each row, select all applicable/correct column indices.\n- Think through each row in "reasoning" first.\n\nRespond ONLY with JSON:\n{\n  "reasoning": "Step-by-step evaluation for each row",\n  "answers": [{"row_index": <int 0-indexed>, "chosen_indices": [<int 0-indexed columns>]}]\n}`;
+          const docGrounding = getGroundingPrompt(qInfo, gridData.columnHeaders, false);
+          if (docGrounding.found) {
+            setStatus(`[${i + 1}/${total}] 📚 Grounded checkbox grid with "${docGrounding.primarySource}"...`);
+          }
+          const prompt = `${docGrounding.prompt}Carefully examine the checkbox grid question, all context, and row/column labels.\nQuestion: ${qInfo.fullText}\nColumns: ${JSON.stringify(gridData.columnHeaders)}\nRows: ${JSON.stringify(rowSummaries.map(r => r.text))}\n\nTask:\n- For each row, select all applicable/correct column indices.\n- Think through each row in "reasoning" first.\n\nRespond ONLY with JSON:\n{\n  "reasoning": "Step-by-step evaluation for each row",\n  "answers": [{"row_index": <int 0-indexed>, "chosen_indices": [<int 0-indexed columns>]}]\n}`;
           const res = await callGeminiAPI(apiKey, model, prompt, images, Math.min(400, 120 + gridData.rows.length * 35));
           const answers = Array.isArray(res.answers) ? res.answers : [];
 
@@ -4365,7 +5971,18 @@ Respond with JSON: {"reasoning": "<step-by-step reasoning identifying the best o
         const isLikert = isLikertOrScaleLabels(labels);
         const biasNotice = (isLikert && biasMode === 'positive') ? '\nRespondent attitude: Favorable / Agree orientation.' : '';
 
-        const prompt = `Carefully read the question, any provided context/notes/instructions, and each option.\nQuestion: ${qInfo.fullText}${biasNotice}\nOptions: ${JSON.stringify(labels)}\n\nInstructions:\n- If this is an objective academic test, quiz, math problem, or factual question, determine the single factually correct answer with 100% precision.\n- If this is an opinion/survey question, choose the most sensible, natural option aligning with a real student persona.\n- Think through each option first in the "reasoning" field to avoid mistakes.\n\nRespond ONLY with JSON:\n{\n  "reasoning": "Step-by-step logic checking each option against the question",\n  "chosen_index": <int, zero-based index of best option>,\n  "other_text": "<optional custom text only if choosing Other>"\n}`;
+        const grounding = getGroundingPrompt(qInfo, labels, isLikert);
+        if (grounding.found) {
+          setStatus(`[${i + 1}/${total}] 📚 Grounded in "${grounding.primarySource}" (${grounding.count} matching excerpts, score: ${grounding.topScore})`);
+        }
+
+        let webEvidence = '';
+        if (!isLikert && (!grounding.found || grounding.mode === 'hybrid')) {
+          setStatus(`[${i + 1}/${total}] 🔍 Searching Google for quiz verification...`);
+          webEvidence = (await fetchWebSearchEvidence(qInfo.title, qInfo.fullText, labels)) || '';
+        }
+
+        const prompt = `${grounding.prompt}${webEvidence}Carefully read the question, any provided context/notes/instructions, and each option.\nQuestion: ${qInfo.fullText}${biasNotice}\nOptions: ${JSON.stringify(labels)}\n\nInstructions:\n- If this is an objective academic test, quiz, math problem, or factual question, determine the single factually correct answer with 100% precision.\n- PAY CRITICAL ATTENTION to negative qualifiers: "NOT", "EXCEPT", "LEAST", "INCORRECT", "FALSE". If the question asks which is NOT true or EXCEPT, select the false option.\n- Cross-reference with any attached document evidence or Live Google Search evidence to verify facts and eliminate distractors/trick choices.\n- For math or quantitative questions, calculate the steps explicitly in "reasoning" before picking.\n- If this is an opinion/survey question, choose the most sensible, natural option aligning with a real student persona.\n- Always prefer selecting from the predefined options. Only select "Other" if none of the listed options apply.\n- Think through each option in the "reasoning" field first to avoid careless mistakes.\n\nRespond ONLY with JSON:\n{\n  "reasoning": "Step-by-step logic checking each option against the question",\n  "chosen_index": <int, zero-based index of best option>,\n  "other_text": "<optional custom text only if choosing Other>"\n}`;
         const res = await callGeminiAPI(apiKey, model, prompt, images, 160);
         let idx = Number(res.chosen_index);
 
@@ -4394,12 +6011,19 @@ Respond with JSON: {"reasoning": "<step-by-step reasoning identifying the best o
           await safelySetToggle(radioOptions[idx], true);
 
           const isOtherOption = /\b(other|lainnya|lain|iba|otro|autre|sonstiges)\b/i.test(labels[idx]);
-          if (isOtherOption && res.other_text) {
-            const selectedContainer = radioOptions[idx].closest('label, .docssharedWizToggleLabeledContainer');
-            const otherInput = selectedContainer?.querySelector('input[type="text"], input.Hvn9fb, input.whsOnd') ||
-                               block.querySelector('input.Hvn9fb, input[aria-label*="Other" i], input[aria-label*="Iba" i], input[aria-label*="Lainnya" i]');
-            if (otherInput) {
-              await setInputField(otherInput, res.other_text);
+          if (isOtherOption) {
+            if (res.other_text && String(res.other_text).trim()) {
+              const selectedContainer = radioOptions[idx].closest('label, .docssharedWizToggleLabeledContainer, .e3Du2d, .Y5AOUb');
+              const otherInput = selectedContainer?.querySelector('input[type="text"], input.Hvn9fb, input.whsOnd') ||
+                                 block.querySelector('input.Hvn9fb, input[aria-label*="Other" i], input[aria-label*="Iba" i], input[aria-label*="Lainnya" i], input[type="text"]');
+              if (otherInput) {
+                await setInputField(otherInput, String(res.other_text).trim());
+              }
+            } else {
+              const nonOtherIdx = labels.findIndex(l => !/\b(other|lainnya|lain|iba|otro|autre|sonstiges)\b/i.test(l));
+              if (nonOtherIdx !== -1 && radioOptions[nonOtherIdx]) {
+                await safelySetToggle(radioOptions[nonOtherIdx], true);
+              }
             }
           }
           markQuestionSolved(block);
@@ -4411,7 +6035,18 @@ Respond with JSON: {"reasoning": "<step-by-step reasoning identifying the best o
         setStatus(`[${i + 1}/${total}] Solving Checkboxes...`);
         const labels = Array.from(checkboxOptions).map((c, idx) => getChoiceLabel(c) || `Option ${idx + 1}`);
 
-        const prompt = `Carefully read the question, instructions, and all available choices.\nQuestion: ${qInfo.fullText}\nOptions: ${JSON.stringify(labels)}\n\nInstructions:\n- If this is a test or knowledge question, select ALL options that are factually correct. Eliminate incorrect options.\n- If this is a survey question, select the options that genuinely apply to a college student.\n- Put your chain-of-thought analysis in "reasoning" first.\n\nRespond ONLY with JSON:\n{\n  "reasoning": "Step-by-step verification of each option",\n  "chosen_indices": [<int, zero-based index of each correct/selected option>],\n  "other_text": "<optional custom text if Other is checked>"\n}`;
+        const grounding = getGroundingPrompt(qInfo, labels, false);
+        if (grounding.found) {
+          setStatus(`[${i + 1}/${total}] 📚 Grounded in "${grounding.primarySource}" (${grounding.count} matching excerpts, score: ${grounding.topScore})`);
+        }
+
+        let webEvidence = '';
+        if (!grounding.found || grounding.mode === 'hybrid') {
+          setStatus(`[${i + 1}/${total}] 🔍 Searching Google for quiz verification...`);
+          webEvidence = (await fetchWebSearchEvidence(qInfo.title, qInfo.fullText, labels)) || '';
+        }
+
+        const prompt = `${grounding.prompt}${webEvidence}Carefully read the question, instructions, and all available choices.\nQuestion: ${qInfo.fullText}\nOptions: ${JSON.stringify(labels)}\n\nInstructions:\n- If this is a test or knowledge question, select ALL options that are factually correct.\n- PAY CRITICAL ATTENTION to negative qualifiers like "NOT", "EXCEPT", "INCORRECT", or "FALSE".\n- Cross-reference with any attached document evidence or Live Google Search evidence to eliminate distractors and false claims.\n- If this is a survey question, select the options that genuinely apply to a college student.\n- Prefer selecting from the predefined options. Do NOT choose "Other" unless none of the predefined options apply.\n- Put your chain-of-thought analysis in "reasoning" first.\n\nRespond ONLY with JSON:\n{\n  "reasoning": "Step-by-step verification of each option",\n  "chosen_indices": [<int, zero-based index of each correct/selected option>],\n  "other_text": "<optional custom text if Other is checked>"\n}`;
         const res = await callGeminiAPI(apiKey, model, prompt, images, 200);
         let indices = (res.chosen_indices || []).map(Number);
 
@@ -4436,11 +6071,17 @@ Respond with JSON: {"reasoning": "<step-by-step reasoning identifying the best o
         for (const c of indices) {
           if (checkboxOptions[c]) {
             const isOtherOption = /\b(other|lainnya|lain|iba|otro|autre|sonstiges)\b/i.test(labels[c]);
-            if (isOtherOption && res.other_text) {
-              const cContainer = checkboxOptions[c].closest('label, .docssharedWizToggleLabeledContainer');
-              const otherInput = cContainer?.querySelector('input[type="text"], input.Hvn9fb, input.whsOnd');
-              if (otherInput) {
-                await setInputField(otherInput, res.other_text);
+            if (isOtherOption) {
+              if (res.other_text && String(res.other_text).trim()) {
+                const cContainer = checkboxOptions[c].closest('label, .docssharedWizToggleLabeledContainer, .e3Du2d, .Y5AOUb');
+                const otherInput = cContainer?.querySelector('input[type="text"], input.Hvn9fb, input.whsOnd') ||
+                                   block.querySelector('input.Hvn9fb, input[aria-label*="Other" i], input[aria-label*="Iba" i], input[aria-label*="Lainnya" i], input[type="text"]');
+                if (otherInput) {
+                  await setInputField(otherInput, String(res.other_text).trim());
+                }
+              } else {
+                // If Other was checked but no text was provided, uncheck it to avoid validation failure
+                await safelySetToggle(checkboxOptions[c], false);
               }
             }
           }
@@ -4451,6 +6092,11 @@ Respond with JSON: {"reasoning": "<step-by-step reasoning identifying the best o
       // 11. PARAGRAPH (Dynamic Answer Variation)
       else if (textarea) {
         setStatus(`[${i + 1}/${total}] Solving Paragraph (Dynamic Variation)...`);
+
+        const grounding = getGroundingPrompt(qInfo, [], false);
+        if (grounding.found) {
+          setStatus(`[${i + 1}/${total}] 📚 Grounded paragraph in "${grounding.primarySource}" (Score: ${grounding.topScore})`);
+        }
 
         const PERSPECTIVES = [
           'practical daily convenience, ease of use, and time-saving aspects',
@@ -4463,15 +6109,16 @@ Respond with JSON: {"reasoning": "<step-by-step reasoning identifying the best o
         const chosenPerspective = PERSPECTIVES[Math.floor(Math.random() * PERSPECTIVES.length)];
         const randomSeed = Math.floor(Math.random() * 100000);
 
-        const prompt = `You are a real survey respondent filling out a Google Form questionnaire.
+        const prompt = `${grounding.prompt}You are a real respondent filling out a Google Form questionnaire.
 Respondent Profile: ${currentProfile.age}-year-old student at ${currentProfile.schoolOrOrg}, studying ${currentProfile.facultyOrMajor} (residing in ${currentProfile.address || 'Quezon City'}).
-Personal Angle to emphasize: ${chosenPerspective}.
+Personal Angle to emphasize (for survey/opinion questions): ${chosenPerspective}.
 Question / Prompt: ${qInfo.fullText}
 
 Instructions:
 - Carefully read the question and any notes/instructions.
-- Write a genuine, thoughtful 1-3 sentence response directly answering what is asked.
-- Avoid robotic or formulaic phrases (NEVER say "As an AI..." or "In my opinion as a student...").
+- If this is an academic, technical, or factual exam question, directly answer it accurately using the attached study material evidence.
+- If this is an opinion/survey question, write a genuine, thoughtful 1-3 sentence response matching the student profile.
+- Avoid robotic phrases (NEVER say "As an AI..." or "In my opinion as an AI...").
 - Keep the phrasing natural, realistic, and high quality.
 Variation Token: #${randomSeed}
 
@@ -4507,7 +6154,18 @@ Respond ONLY with valid JSON:
         if (isEmail) formatHint = 'valid email address';
         if (isNum) formatHint = 'number only';
 
-        const prompt = `Carefully read the question and any formatting instructions.\nQuestion: ${qInfo.fullText}\nRespondent Profile: ${currentProfile.age}-year-old student at ${currentProfile.schoolOrOrg}, majoring in ${currentProfile.facultyOrMajor}.\nTarget Format: ${formatHint}\n\nInstructions:\n- If this is an objective quiz, math, or factual question, provide the exact, accurate answer without extra conversational filler.\n- If it asks for personal details (e.g. name, student ID, course, year), match the profile sensibly.\n- Put reasoning in "reasoning" first to ensure zero mistakes.\n\nRespond ONLY with JSON: {"reasoning": "Direct analysis", "answer": "<concise answer text>"}`;
+        const grounding = getGroundingPrompt(qInfo, [], false);
+        if (grounding.found) {
+          setStatus(`[${i + 1}/${total}] 📚 Grounded short answer in "${grounding.primarySource}" (Score: ${grounding.topScore})`);
+        }
+
+        let webEvidence = '';
+        if (!isEmail && !isNum && (!grounding.found || grounding.mode === 'hybrid')) {
+          setStatus(`[${i + 1}/${total}] 🔍 Searching Google for quiz verification...`);
+          webEvidence = (await fetchWebSearchEvidence(qInfo.title, qInfo.fullText, [])) || '';
+        }
+
+        const prompt = `${grounding.prompt}${webEvidence}Carefully read the question and any formatting instructions.\nQuestion: ${qInfo.fullText}\nRespondent Profile: ${currentProfile.age}-year-old student at ${currentProfile.schoolOrOrg}, majoring in ${currentProfile.facultyOrMajor}.\nTarget Format: ${formatHint}\n\nInstructions:\n- If this is an objective quiz, math, or factual question, provide the exact, accurate answer without extra conversational filler.\n- Cross-reference directly with any attached document evidence or Live Google Search evidence.\n- For math or calculation questions, compute step by step in "reasoning" before writing the answer.\n- If it asks for personal details (e.g. name, student ID, course, year), match the profile sensibly.\n- Put reasoning in "reasoning" first to ensure zero mistakes.\n\nRespond ONLY with JSON: {"reasoning": "Direct analysis", "answer": "<concise answer text>"}`;
 
         const res = await callGeminiAPI(apiKey, model, prompt, images, 120);
 
@@ -4557,25 +6215,23 @@ Respond ONLY with valid JSON:
   // Master solver covering all 12 question types across multiple pages until Submit button is reached
   async function processQuestions(isContinuation = false) {
     const savedProvider = getSafeValue('ai_provider', DEFAULT_PROVIDER);
-    const prov = PROVIDERS[savedProvider] || PROVIDERS.gemini;
+    const prov = PROVIDERS[savedProvider] || PROVIDERS.anymodel;
 
     if (!isContinuation) {
       totalTokensUsed = 0;
-      // Auto-Rotate: On fresh form start, rotate to next persona so name changes every time!
-      if (isAutoRotateEnabled() && !currentSessionPersona) {
-        rotatePersona();
+      // Auto-Rotate: On fresh form start, always rotate to a fresh persona so info changes every time!
+      if (isAutoRotateEnabled()) {
+        rotatePersona(true);
       }
-      setAutoSolvingState(true, currentSessionPersona);
+      setAutoSolvingState(true, currentSessionPersona || getUserProfile(true));
     }
 
     const apiKey = (getSafeValue(`${prov.id}_api_key`, prov.defaultKey || '')).trim();
     const model = (getSafeValue(`${prov.id}_model`, prov.defaultModel)).trim();
 
     if (!apiKey) {
-      setStatus(`⚠️ Error: Missing ${prov.name} API key. Please enter your API key to solve.`);
-      showToastNotification(`⚠️ Missing ${prov.name} API Key! Please configure your key.`, false);
+      setStatus(`Error: Please enter and save your ${prov.name} API key in the HUD first.`);
       cleanupProcessingState();
-      showApiKeyOnboardingModal(true);
       return;
     }
 
@@ -4828,14 +6484,36 @@ Respond ONLY with valid JSON:
   window.addEventListener('keydown', keyHandler, true);
   document.addEventListener('keydown', keyHandler, true);
 
-  // Expose global helpers to window for console debugging and shortcuts
-  window.__toggleFormAIHUD = toggleHUD;
-  window.showFormAI = function () {
+  // Expose global helpers to both unsafeWindow (page DevTools console) and window (userscript sandbox)
+  const globalScope = typeof unsafeWindow !== 'undefined' ? unsafeWindow : (typeof window !== 'undefined' ? window : globalThis);
+  globalScope.__toggleFormAIHUD = toggleHUD;
+  globalScope.showFormAI = function () {
     isMinimized = false;
     mountHUD();
     updateHUDState();
     console.log('[Google Form AI HUD] showFormAI called: HUD is now open and visible.');
   };
+  if (typeof window !== 'undefined' && window !== globalScope) {
+    window.__toggleFormAIHUD = toggleHUD;
+    window.showFormAI = globalScope.showFormAI;
+  }
+
+  // Register interactive commands in Tampermonkey popup menu
+  if (typeof GM_registerMenuCommand === 'function') {
+    try {
+      GM_registerMenuCommand('⚡ Open / Toggle AI Assistant HUD', () => {
+        isMinimized = false;
+        mountHUD();
+        updateHUDState();
+        if (typeof globalScope.showFormAI === 'function') {
+          globalScope.showFormAI();
+        }
+      });
+      GM_registerMenuCommand('🔄 Scan & Solve Current Questions', () => {
+        processQuestions();
+      });
+    } catch (e) {}
+  }
 
   // Fallback: On first user tap/click anywhere, ensure HUD is mounted
   const firstTouchMount = () => {
@@ -4848,11 +6526,6 @@ Respond ONLY with valid JSON:
 
   // Immediate mount attempt
   mountHUD();
-
-  // If user downloaded this and has no API key set yet, ask them for their API key and provide primary AI provider link
-  setTimeout(() => {
-    showApiKeyOnboardingModal(false);
-  }, 750);
 
   // Check if we need to auto-resume solving after a full page refresh / HTTP POST
   let hasCheckedAutoResume = false;

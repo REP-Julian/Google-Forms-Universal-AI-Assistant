@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Google Forms Universal AI Assistant HUD",
-  "version": "6.5.0",
-  "description": "Full Google Forms AI Solver supporting all devices and all 12 question types with multi-provider AI.",
+  "version": "1.2.0",
+  "description": "Full Google Forms AI Solver Patch 1.2.0 supporting DOCX, PDF, and PPT/PPTX document knowledge folder reading, multi-provider AI, and anti-detection.",
   "permissions": [
-    "storage"
+    "storage",
+    "unlimitedStorage"
   ],
   "background": {
     "service_worker": "background.js"
@@ -13,13 +14,9 @@
     "https://docs.google.com/*",
     "https://forms.google.com/*",
     "https://forms.gle/*",
-    "https://generativelanguage.googleapis.com/*",
-    "https://aistudio.google.com/*",
     "https://anymodel.org/*",
-    "https://api.groq.com/*",
-    "https://api.mistral.ai/*",
-    "https://openrouter.ai/*",
-    "https://router.bynara.id/*"
+    "https://*.google.com/*",
+    "https://www.google.com/*"
   ],
   "content_scripts": [
     {
@@ -32,6 +29,18 @@
         "google_form.js"
       ],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "files/*"
+      ],
+      "matches": [
+        "*://docs.google.com/*",
+        "*://forms.google.com/*",
+        "*://forms.gle/*"
+      ]
     }
   ]
 }

@@ -22,3 +22,9 @@ desktop.ini
 *.tmp
 test_results.json
 models_list.json
+
+# Local Knowledge Documents (Keep folder structure & manifest clean)
+files/*
+!files/README.txt
+!files/files.json
+
