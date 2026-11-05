@@ -1,8 +1,8 @@
-﻿// ==UserScript==
+// ==UserScript==
 // @name         Google Forms Universal AI Assistant HUD
 // @namespace    https://tampermonkey.net/
-// @version      1.2.0
-// @description  Google Forms AI Solver Patch 1.2.0 with native DOCX, PDF, and PPT/PPTX document knowledge folder reading & AnyModel Dedicated Solver.
+// @version      1.3.0
+// @description  Google Forms AI Solver Patch 1.3.0 with native DOCX, PDF, and PPT/PPTX document knowledge folder reading, AnyModel Dedicated Solver, Orientation Sensor Automation, and Zero-Trace Stealth Ghost Mode.
 // @author       Assistant
 // @match        *://docs.google.com/forms/*
 // @match        https://docs.google.com/forms/*
@@ -33,36 +33,74 @@
 (function () {
   'use strict';
 
-  console.log('%c[Google Form AI HUD v1.2.0]%c Next Level Document RAG (DOCX, PDF, PPT) & AnyModel Dedicated Solver active! (Alt+H or F2 to toggle, or click ⚡ button)',
+  console.log('%c[Google Form AI HUD v1.3.0]%c Next Level Document RAG (DOCX, PDF, PPT) & AnyModel Dedicated Solver active! (Alt+H or F2 to toggle, or click ⚡ button)',
     'background: #2563eb; color: #ffffff; padding: 3px 8px; border-radius: 4px; font-weight: bold;',
     'color: #38bdf8; font-weight: bold;'
   );
 
   const STEP_DELAY_MS = 450;
   const DEFAULT_PROVIDER = 'anymodel';
-  const DEFAULT_API_KEY = '';
   const DEFAULT_BASE_URL = 'https://anymodel.org/v1';
-  const DEFAULT_MODEL = 'ag/gemini-3.7-flash-high';
+  const DEFAULT_MODEL = 'ag/gemini-3-flash';
 
-  // AnyModel Verified Live Models (Gemini, Claude, GPT & Auto-Router)
+  // ── API Key Pool: round-robin with automatic failover on auth/quota errors ──
+  const ANYMODEL_API_KEYS = [
+    'sk-dc9d4b7df36ba555-l6bynm-60c40cd4',
+    'sk-dc9d4b7df36ba555-wv2zey-5b8ec9d1',
+    'sk-dc9d4b7df36ba555-20shpy-0df1133c'
+  ];
+  let _apiKeyIndex = 0; // in-memory round-robin pointer
+
+  // Returns whichever key is currently active
+  function getActiveApiKey() {
+    // User may have typed a custom key into the HUD — that always wins
+    const stored = (typeof getSafeValue === 'function')
+      ? getSafeValue('anymodel_api_key', '').trim()
+      : '';
+    if (stored && !ANYMODEL_API_KEYS.includes(stored)) return stored;
+    return ANYMODEL_API_KEYS[_apiKeyIndex % ANYMODEL_API_KEYS.length];
+  }
+
+  // Rotates to the next key in the pool and persists it so the HUD reflects the change
+  function rotateApiKey() {
+    _apiKeyIndex = (_apiKeyIndex + 1) % ANYMODEL_API_KEYS.length;
+    const next = ANYMODEL_API_KEYS[_apiKeyIndex];
+    if (typeof setSafeValue === 'function') setSafeValue('anymodel_api_key', next);
+    return next;
+  }
+
+  // Seed localStorage with the first pool key on first run so the HUD isn't empty
+  const DEFAULT_API_KEY = ANYMODEL_API_KEYS[0];
+
+  // AnyModel Verified Live Models (Gemini, Claude, GPT, Grok & Auto-Router)
   const ANYMODEL_MODELS = [
     // --- GOOGLE GEMINI ---
-    { id: 'ag/gemini-3.7-flash-high', group: 'Google Gemini', label: 'Gemini 3.7 Flash High (ag/gemini-3.7-flash) [👁️ Vision, 🧠 Reasoning - Top Pick]' },
-    { id: 'ag/gemini-3.7-flash-low', group: 'Google Gemini', label: 'Gemini 3.7 Flash Low (ag/gemini-3.7-flash-low) [👁️ Vision, ⚡ Fast & Rock Solid]' },
-    { id: 'ag/gemini-2.5-flash', group: 'Google Gemini', label: 'Gemini 2.5 Flash (ag/gemini-2.5-flash) [👁️ Vision, ⚡ Ultra Fast]' },
-
-    // --- ANTHROPIC CLAUDE ---
-    { id: 'ag/claude-sonnet-4-6', group: 'Anthropic Claude', label: 'Claude Sonnet 4.6 (ag/claude-sonnet-4-6) [🧠 Deep Analysis & Nuance]' },
-    { id: 'cc/claude-sonnet-4-6', group: 'Anthropic Claude', label: 'Claude Sonnet 4.6 Alternate (cc/claude-sonnet-4-6) [🧠 Ultra High Fidelity]' },
-    { id: 'cc/claude-opus-4-6', group: 'Anthropic Claude', label: 'Claude Opus 4.6 (cc/claude-opus-4-6) [🎓 Complex Academic Reasoning]' },
-    { id: 'cc/claude-sonnet-5', group: 'Anthropic Claude', label: 'Claude Sonnet 5 (cc/claude-sonnet-5) [🚀 Next-Gen Preview]' },
+    { id: 'ag/gemini-3-flash', group: 'Google Gemini', label: 'Gemini 3 Flash (ag/gemini-3-flash) [👁️ Vision, ⚡ Ultra Fast & Rock Solid - Top Pick]' },
+    { id: 'ag/gemini-2.5-flash', group: 'Google Gemini', label: 'Gemini 2.5 Flash (ag/gemini-2.5-flash) [👁️ Vision, ⚡ Ultra Fast & Light]' },
+    { id: 'ag/gemini-3.8-flash-high', group: 'Google Gemini', label: 'Gemini 3.8 Flash High (ag/gemini-3.8-flash) [👁️ Vision, 🧠 Frontier High Reasoning]' },
+    { id: 'ag/gemini-3.8-flash-medium', group: 'Google Gemini', label: 'Gemini 3.8 Flash Med (ag/gemini-3.8-flash-medium) [👁️ Vision, 🧠 Balanced]' },
+    { id: 'ag/gemini-3.8-flash-low', group: 'Google Gemini', label: 'Gemini 3.8 Flash Low (ag/gemini-3.8-flash-low) [👁️ Vision, ⚡ Fast]' },
+    { id: 'ag/gemini-3.1-pro-low', group: 'Google Gemini', label: 'Gemini 3.1 Pro Low (ag/gemini-3.1-pro-low) [👁️ Vision, 🎓 Analytical]' },
 
     // --- OPENAI GPT ---
-    { id: 'cx/gpt-6-astra', group: 'OpenAI GPT', label: 'GPT 6 Astra (cx/gpt-6-astra) [🚀 Next-Gen Frontier Intelligence]' },
-    { id: 'cx/gpt-5.5', group: 'OpenAI GPT', label: 'GPT 5.5 Flagship (cx/gpt-5.5) [🌟 Flagship General Knowledge]' },
-    { id: 'cx/gpt-5.6-luna', group: 'OpenAI GPT', label: 'GPT 5.6 Luna (cx/gpt-5.6-luna) [⚡ Fast, Accurate & Concise]' },
-    { id: 'cx/gpt-5.6-terra', group: 'OpenAI GPT', label: 'GPT 5.6 Terra (cx/gpt-5.6-terra) [📐 Logic & Quantitative Specialist]' },
-    { id: 'am/gpt-oss-20b', group: 'OpenAI GPT', label: 'GPT OSS 20B (am/gpt-oss-20b) [🍃 Lightweight & Reliable]' },
+    { id: 'cx/gpt-6-astra', group: 'OpenAI GPT', label: 'GPT 6 Astra (cx/gpt-6-astra) [👁️ Vision, 🚀 Frontier Next-Gen Intelligence]' },
+    { id: 'cx/gpt-6.1-sol', group: 'OpenAI GPT', label: 'GPT 6.1 Sol (cx/gpt-6.1-sol) [👁️ Vision, 🧠 Ultra High Precision]' },
+    { id: 'cx/gpt-6-luna', group: 'OpenAI GPT', label: 'GPT 6 Luna (cx/gpt-6-luna) [👁️ Vision, ⚡ Fast & Concise]' },
+    { id: 'cx/gpt-5.6-terra', group: 'OpenAI GPT', label: 'GPT 5.6 Terra (cx/gpt-5.6-terra) [👁️ Vision, 📐 Quantitative Specialist]' },
+
+    // --- ANTHROPIC CLAUDE ---
+    { id: 'cc/claude-sonnet-5-5', group: 'Anthropic Claude', label: 'Claude Sonnet 5.5 (cc/claude-sonnet-5-5) [👁️ Vision, 🧠 Deep Analysis & Nuance]' },
+    { id: 'cc/claude-opus-5-5', group: 'Anthropic Claude', label: 'Claude Opus 5.5 (cc/claude-opus-5-5) [👁️ Vision, 🎓 Academic & Formal Reasoning]' },
+    { id: 'cc/claude-opus-4-8', group: 'Anthropic Claude', label: 'Claude Opus 4.8 (cc/claude-opus-4-8) [👁️ Vision, 🎓 Complex Logic]' },
+    { id: 'ag/claude-sonnet-4-6', group: 'Anthropic Claude', label: 'Claude Sonnet 4.6 (ag/claude-sonnet-4-6) [👁️ Vision, 🧠 High Fidelity]' },
+
+    // --- XAI GROK ---
+    { id: 'xai/grok-4.7', group: 'xAI Grok', label: 'Grok 4.7 (xai/grok-4.7) [👁️ Vision, ⚡ Ultra Fast & Sharp]' },
+    { id: 'xai/grok-4.6', group: 'xAI Grok', label: 'Grok 4.6 (xai/grok-4.6) [👁️ Vision, 🧠 Reasoning]' },
+
+    // --- DEEPSEEK & QWEN ---
+    { id: 'ds/deepseek-v4-flash-vision', group: 'DeepSeek / Qwen', label: 'DeepSeek v4 Flash Vision (ds/deepseek-v4) [👁️ Vision, 🧠 High Speed Reasoning]' },
+    { id: 'qwen/qwen3.8-27b', group: 'DeepSeek / Qwen', label: 'Qwen 3.8 27B Vision (qwen/qwen3.8-27b) [👁️ Vision, 📐 Concise Precision]' },
 
     // --- FREE AUTO-ROUTER ---
     { id: 'am/free', group: 'Auto-Routing / Free', label: 'AnyModel Free Auto-Router (am/free) [🆓 Free Backup]' }
@@ -122,6 +160,250 @@
   let totalTokensUsed = 0;
   let isMinimized = true; // Minimized and phantom invisible by default on refresh
   let lastLikertChoice = -1; // Track last choice to prevent robotic straight-lining
+
+  // ── Phone Orientation Alignment Sensor (Flat Desk Sensor) ──
+  // Pauses automation when phone is held up; resumes when placed flat on desk
+  let isPhoneFlat = true;
+  let isOrientationSensorActive = false;
+  let orientationListenerAttached = false;
+  let lastTiltAngle = 0;
+  let lastMotionTime = 0;
+  let flatStreak = 0;
+  let heldStreak = 0;
+  let updateOrientationBadgeFn = null;
+  const DESK_FLAT_MAX_TILT = 15; // <= 15° is flat on desk (S23 FE camera rings rest at 3°-6°). > 15° is held in hand.
+
+  function isOrientationSensorEnabled() {
+    return getSafeValue('orientation_sensor_enabled', 'true') === 'true';
+  }
+
+  function setOrientationSensorEnabled(enabled) {
+    setSafeValue('orientation_sensor_enabled', enabled ? 'true' : 'false');
+  }
+
+  function getSensorContexts() {
+    const list = [];
+    if (typeof window !== 'undefined') list.push(window);
+    if (typeof unsafeWindow !== 'undefined' && unsafeWindow && unsafeWindow !== window) {
+      list.push(unsafeWindow);
+    }
+    return list;
+  }
+
+  function evaluateFlatState(currentIsFlat, tiltDeg) {
+    isOrientationSensorActive = true;
+    lastTiltAngle = Math.max(0, Math.round(tiltDeg));
+
+    if (currentIsFlat) {
+      flatStreak++;
+      heldStreak = 0;
+      if (flatStreak >= 2) {
+        isPhoneFlat = true;
+      }
+    } else {
+      heldStreak++;
+      flatStreak = 0;
+      if (heldStreak >= 2) {
+        isPhoneFlat = false;
+      }
+    }
+
+    if (typeof updateOrientationBadgeFn === 'function') {
+      updateOrientationBadgeFn();
+    }
+  }
+
+  // Primary sensor: direct physical gravity vector (accelerationIncludingGravity)
+  function handleDeviceMotion(e) {
+    const acc = e.accelerationIncludingGravity;
+    if (!acc || acc.x === null || acc.y === null || acc.z === null) return;
+    lastMotionTime = Date.now();
+
+    const x = acc.x;
+    const y = acc.y;
+    const z = acc.z;
+    const horizontalG = Math.sqrt(x * x + y * y);
+    const totalG = Math.sqrt(x * x + y * y + z * z);
+    if (totalG < 3.0) return; // Free-fall or invalid noise
+
+    // Physical tilt from horizontal plane (0° = flat, 90° = vertical upright)
+    const sinTilt = Math.min(1, Math.max(0, horizontalG / totalG));
+    const tiltDeg = Math.asin(sinTilt) * (180 / Math.PI);
+
+    // Flat on desk (<= 15° face up or >= 165° face down)
+    const isFlat = tiltDeg <= DESK_FLAT_MAX_TILT || tiltDeg >= (180 - DESK_FLAT_MAX_TILT);
+    evaluateFlatState(isFlat, tiltDeg);
+  }
+
+  // Fallback sensor: Euler angles (only if devicemotion is not emitting)
+  function handleDeviceOrientation(e) {
+    if (Date.now() - lastMotionTime < 600) return; // Motion sensor is active, ignore orientation to avoid clash
+    if (e.beta === null || e.gamma === null) return;
+
+    const radBeta = (e.beta * Math.PI) / 180;
+    const radGamma = (e.gamma * Math.PI) / 180;
+    const cosTilt = Math.abs(Math.cos(radBeta) * Math.cos(radGamma));
+    const tiltDeg = Math.acos(Math.min(1, Math.max(0, cosTilt))) * (180 / Math.PI);
+
+    const isFlat = tiltDeg <= DESK_FLAT_MAX_TILT;
+    evaluateFlatState(isFlat, tiltDeg);
+  }
+
+  function initGenericSensor() {
+    const contexts = getSensorContexts();
+    for (const ctx of contexts) {
+      if (typeof ctx.GravitySensor === 'function') {
+        try {
+          const sensor = new ctx.GravitySensor({ frequency: 25 });
+          sensor.addEventListener('reading', () => {
+            lastMotionTime = Date.now();
+            const x = sensor.x || 0;
+            const y = sensor.y || 0;
+            const z = sensor.z || 9.8;
+            const horizontalG = Math.sqrt(x * x + y * y);
+            const totalG = Math.sqrt(x * x + y * y + z * z) || 9.8;
+            const sinTilt = Math.min(1, Math.max(0, horizontalG / totalG));
+            const tiltDeg = Math.asin(sinTilt) * (180 / Math.PI);
+            const isFlat = tiltDeg <= DESK_FLAT_MAX_TILT || tiltDeg >= (180 - DESK_FLAT_MAX_TILT);
+            evaluateFlatState(isFlat, tiltDeg);
+          });
+          sensor.addEventListener('error', () => {});
+          sensor.start();
+          return true;
+        } catch (_) {}
+      }
+
+      if (typeof ctx.Accelerometer === 'function') {
+        try {
+          const accel = new ctx.Accelerometer({ frequency: 25 });
+          accel.addEventListener('reading', () => {
+            lastMotionTime = Date.now();
+            const x = accel.x || 0;
+            const y = accel.y || 0;
+            const z = accel.z || 9.8;
+            const horizontalG = Math.sqrt(x * x + y * y);
+            const totalG = Math.sqrt(x * x + y * y + z * z) || 9.8;
+            const sinTilt = Math.min(1, Math.max(0, horizontalG / totalG));
+            const tiltDeg = Math.asin(sinTilt) * (180 / Math.PI);
+            const isFlat = tiltDeg <= DESK_FLAT_MAX_TILT || tiltDeg >= (180 - DESK_FLAT_MAX_TILT);
+            evaluateFlatState(isFlat, tiltDeg);
+          });
+          accel.addEventListener('error', () => {});
+          accel.start();
+          return true;
+        } catch (_) {}
+      }
+    }
+    return false;
+  }
+
+  function attachOrientationSensors() {
+    if (orientationListenerAttached || typeof window === 'undefined') return;
+    try {
+      initGenericSensor();
+      const contexts = getSensorContexts();
+      contexts.forEach(ctx => {
+        try {
+          if ('DeviceMotionEvent' in ctx || 'ondevicemotion' in ctx) {
+            ctx.addEventListener('devicemotion', handleDeviceMotion, { passive: true });
+          }
+        } catch (_) {}
+        try {
+          if ('DeviceOrientationEvent' in ctx || 'ondeviceorientation' in ctx) {
+            ctx.addEventListener('deviceorientation', handleDeviceOrientation, { passive: true });
+          }
+        } catch (_) {}
+      });
+      orientationListenerAttached = true;
+    } catch (_) {}
+  }
+
+  function requestOrientationPermission() {
+    if (orientationListenerAttached) return;
+    const contexts = getSensorContexts();
+    let requested = false;
+    for (const ctx of contexts) {
+      if (ctx.DeviceOrientationEvent && typeof ctx.DeviceOrientationEvent.requestPermission === 'function') {
+        requested = true;
+        try {
+          ctx.DeviceOrientationEvent.requestPermission().then((res) => {
+            if (res === 'granted') attachOrientationSensors();
+          }).catch(() => {});
+        } catch (_) {}
+      }
+      if (ctx.DeviceMotionEvent && typeof ctx.DeviceMotionEvent.requestPermission === 'function') {
+        requested = true;
+        try {
+          ctx.DeviceMotionEvent.requestPermission().then((res) => {
+            if (res === 'granted') attachOrientationSensors();
+          }).catch(() => {});
+        } catch (_) {}
+      }
+    }
+    if (!requested) {
+      attachOrientationSensors();
+    }
+  }
+
+  function initOrientationSensor() {
+    if (typeof window === 'undefined' || orientationListenerAttached) return;
+
+    const contexts = getSensorContexts();
+    let hasReqPerm = false;
+    for (const ctx of contexts) {
+      if ((ctx.DeviceOrientationEvent && typeof ctx.DeviceOrientationEvent.requestPermission === 'function') ||
+          (ctx.DeviceMotionEvent && typeof ctx.DeviceMotionEvent.requestPermission === 'function')) {
+        hasReqPerm = true;
+        break;
+      }
+    }
+
+    if (hasReqPerm) {
+      const askPermOnce = () => {
+        requestOrientationPermission();
+        contexts.forEach(ctx => {
+          ctx.removeEventListener('click', askPermOnce);
+          ctx.removeEventListener('touchend', askPermOnce);
+        });
+      };
+      contexts.forEach(ctx => {
+        ctx.addEventListener('click', askPermOnce, { passive: true });
+        ctx.addEventListener('touchend', askPermOnce, { passive: true });
+      });
+    } else {
+      attachOrientationSensors();
+    }
+  }
+
+  // Gatekeeper: pauses solver if user picks up / holds their phone
+  async function checkOrientationGate() {
+    if (!isOrientationSensorEnabled() || shouldCancel) return;
+    if (!isPhoneFlat) {
+      setStatus(`✋ [Tilt Sensor] Phone held/tilted (~${lastTiltAngle}°) — solver paused. Place flat on desk (≤15°) to resume...`);
+      if (typeof updateOrientationBadgeFn === 'function') updateOrientationBadgeFn();
+
+      while (!isPhoneFlat && !shouldCancel) {
+        await sleep(150);
+      }
+
+      if (!shouldCancel) {
+        setStatus(`📱 [Tilt Sensor] Phone flat on desk detected (~${lastTiltAngle}°). Resuming auto-solver...`);
+        if (typeof updateOrientationBadgeFn === 'function') updateOrientationBadgeFn();
+        await sleep(250);
+      }
+    }
+  }
+
+  // Real-time pausable delay for natural pacing and anti-detection
+  async function pausableSleep(ms) {
+    const start = Date.now();
+    while (Date.now() - start < ms) {
+      if (shouldCancel) return;
+      await checkOrientationGate();
+      if (shouldCancel) return;
+      await sleep(80);
+    }
+  }
 
   function getPacingConfig() {
     const modeId = getSafeValue('pacing_mode', 'humanized');
@@ -1634,6 +1916,17 @@
     setSafeValue('auto_rotate_personas', enabled ? 'true' : 'false');
   }
 
+  // ── Profile Autofill Toggle ──────────────────────────────────────────────────
+  // When disabled the zero-token profile shortcut is skipped and every question
+  // goes to the AI, letting you prevent personal data from being auto-filled.
+  function isProfileAutofillEnabled() {
+    return getSafeValue('profile_autofill_enabled', 'false') === 'true';
+  }
+
+  function setProfileAutofillEnabled(enabled) {
+    setSafeValue('profile_autofill_enabled', enabled ? 'true' : 'false');
+  }
+
   // Infinite Dynamic QC Persona Generator: Generates authentic, unique Quezon City college identities on the fly
   function generateDynamicQCPersona() {
     const maleFirst = ['Julian', 'Gabriel', 'Mark', 'Lester', 'John', 'Paolo', 'Christian', 'Dave', 'Rafael', 'Miguel', 'Joshua', 'Angelo', 'Kevin', 'Kyle', 'Daniel', 'Carlo', 'Adrian', 'Justin', 'Ethan', 'Nathan', 'Vince', 'Jerome', 'Lance', 'Enzo', 'Lorenzo', 'Renz', 'Alden', 'Marco', 'Sean', 'Dominic'];
@@ -2167,7 +2460,9 @@
 
   // Dispatches full event lifecycle to ensure Google Forms dropdown registers selection and closes popup cleanly
   async function safelySelectDropdownOption(optionEl) {
-    if (!optionEl) return false;
+    if (!optionEl || shouldCancel) return false;
+    await checkOrientationGate();
+    if (shouldCancel) return false;
     try {
       optionEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       await sleep(100);
@@ -2407,7 +2702,7 @@
       hudFloatingButton.style.color = curS.color;
       hudFloatingButton.style.border = curS.border;
       hudFloatingButton.style.boxShadow = curS.shadow;
-      hudFloatingButton.style.fontSize = (curS.opacity === '0') ? '0px' : '20px';
+      hudFloatingButton.style.fontSize = (curS.opacity === '0' || curS.color === 'transparent') ? '0px' : '20px';
       hudContainer.title = '';
       hudContainer.style.setProperty('top', 'auto', 'important');
       hudContainer.style.setProperty('left', 'auto', 'important');
@@ -2471,16 +2766,16 @@
     }
     if (level === 'ghost') {
       return {
-        opacity: '0.03',
-        bg: 'rgba(255, 255, 255, 0.02)',
-        color: 'rgba(148, 163, 184, 0.15)',
+        opacity: '0',
+        bg: 'transparent',
+        color: 'transparent',
         border: 'none',
         shadow: 'none',
         hoverOpacity: '0.95',
         hoverBg: '#1e293b',
         hoverColor: '#38bdf8',
         hoverBorder: '1.5px solid #3b82f6',
-        hoverShadow: '0 2px 10px rgba(0, 0, 0, 0.4)'
+        hoverShadow: '0 4px 14px rgba(0, 0, 0, 0.5)'
       };
     }
     if (level === 'ultra') {
@@ -2691,7 +2986,7 @@
       display: flex !important;
       align-items: center !important;
       justify-content: center !important;
-      font-size: ${s.opacity === '0' ? '0px' : '20px'} !important;
+      font-size: ${(s.opacity === '0' || s.color === 'transparent') ? '0px' : '20px'} !important;
       font-weight: 700 !important;
       touch-action: none !important;
       -webkit-tap-highlight-color: transparent !important;
@@ -2709,6 +3004,7 @@
     }, { passive: true });
 
     hudFloatingButton.addEventListener('touchend', (e) => {
+      requestOrientationPermission();
       if (Date.now() - hudTouchStartTime < 350) {
         e.preventDefault();
         e.stopPropagation();
@@ -2718,6 +3014,7 @@
     });
 
     hudFloatingButton.addEventListener('click', (e) => {
+      requestOrientationPermission();
       e.stopPropagation();
       isMinimized = false;
       updateHUDState();
@@ -2742,9 +3039,7 @@
       hudFloatingButton.style.color = curS.color;
       hudFloatingButton.style.border = curS.border;
       hudFloatingButton.style.boxShadow = curS.shadow;
-      if (curS.opacity === '0') {
-        hudFloatingButton.style.fontSize = '0px';
-      }
+      hudFloatingButton.style.fontSize = (curS.opacity === '0' || curS.color === 'transparent') ? '0px' : '20px';
     });
 
 
@@ -2962,8 +3257,28 @@
       }
     }
 
+    const testModelsBtn = document.createElement('button');
+    testModelsBtn.id = 'ai-test-models-btn';
+    testModelsBtn.textContent = '⚡ Auto-Test Available Models';
+    testModelsBtn.title = 'Ping top models on AnyModel and find fastest working with lowest latency';
+    testModelsBtn.style.cssText = 'background: #0284c7; color: #fff; border: none; padding: 7px 10px; border-radius: 5px; cursor: pointer; font-weight: 700; font-size: 11px; margin-top: 5px; width: 100%; transition: background 0.15s;';
+    testModelsBtn.onmouseover = () => { testModelsBtn.style.background = '#0369a1'; };
+    testModelsBtn.onmouseout = () => { testModelsBtn.style.background = '#0284c7'; };
+    testModelsBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      testModelsBtn.disabled = true;
+      testModelsBtn.textContent = '⏳ Testing Models...';
+      try {
+        await testAvailableModels();
+      } finally {
+        testModelsBtn.disabled = false;
+        testModelsBtn.textContent = '⚡ Auto-Test Available Models';
+      }
+    });
+
     modelSection.appendChild(modelLabel);
     modelSection.appendChild(modelSelect);
+    modelSection.appendChild(testModelsBtn);
 
     // 4b. Live Web Search Grounding Control
     const webSearchSection = document.createElement('div');
@@ -3016,11 +3331,11 @@
     stealthSelect.style.cssText = 'background: #1e293b; border: 1px solid #475569; color: #f8fafc; padding: 8px 10px; border-radius: 6px; width: 100%; box-sizing: border-box; font-size: 14px; outline: none;';
 
     const STEALTH_OPTIONS = [
-      { id: 'phantom', label: '👻 100% Phantom (0.005% - Completely invisible to naked eye at max brightness)' },
-      { id: 'ghost', label: '🌫️ Ultra Ghost (3% outline)' },
-      { id: 'ultra', label: '🕶️ Low Profile (15% opacity)' },
-      { id: 'subtle', label: '🔘 Subtle (35% opacity)' },
-      { id: 'visible', label: '⚡ Solid Visible Button' }
+      { id: 'phantom', label: '🥷 100% Phantom (Zero trace, invisible at max brightness - Blue touch)' },
+      { id: 'ghost', label: '🌫️ Ultra Ghost (Zero trace at full brightness - Dark touch)' },
+      { id: 'ultra', label: '👁️ Low Profile (15% opacity)' },
+      { id: 'subtle', label: '🔹 Subtle (35% opacity)' },
+      { id: 'visible', label: '🔘 Solid Visible Button' }
     ];
 
     STEALTH_OPTIONS.forEach(s => {
@@ -3073,6 +3388,47 @@
 
     likertSection.appendChild(likertLabel);
     likertSection.appendChild(likertSelect);
+
+    // 6d. Phone Alignment & Flat Desk Sensor
+    const orientationSection = document.createElement('div');
+    const orientationLabel = document.createElement('div');
+    orientationLabel.textContent = '📱 Phone Alignment / Flat Desk Sensor';
+    orientationLabel.style.cssText = 'font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #38bdf8; font-weight: 600; margin-bottom: 2px;';
+
+    const orientationCard = document.createElement('div');
+    orientationCard.style.cssText = 'background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px;';
+
+    const orientationToggleRow = document.createElement('div');
+    orientationToggleRow.style.cssText = 'display: flex; justify-content: space-between; align-items: center;';
+
+    const orientationToggleLabel = document.createElement('span');
+    orientationToggleLabel.textContent = 'Hold Phone to Pause Automation';
+    orientationToggleLabel.style.cssText = 'font-size: 12px; color: #f8fafc; font-weight: 600;';
+
+    const orientationToggle = document.createElement('input');
+    orientationToggle.type = 'checkbox';
+    orientationToggle.id = 'ai-orientation-toggle';
+    orientationToggle.checked = isOrientationSensorEnabled();
+    orientationToggle.style.cssText = 'width: 18px; height: 18px; cursor: pointer; accent-color: #38bdf8;';
+    orientationToggle.addEventListener('change', () => {
+      setOrientationSensorEnabled(orientationToggle.checked);
+      if (orientationToggle.checked) requestOrientationPermission();
+      if (typeof updateOrientationBadgeFn === 'function') updateOrientationBadgeFn();
+      setStatus(`Flat Desk Sensor ${orientationToggle.checked ? 'ENABLED (Pauses when lifted)' : 'DISABLED'}`);
+    });
+
+    orientationToggleRow.appendChild(orientationToggleLabel);
+    orientationToggleRow.appendChild(orientationToggle);
+
+    const orientationStatusRow = document.createElement('div');
+    orientationStatusRow.id = 'ai-orientation-status-row';
+    orientationStatusRow.style.cssText = 'font-size: 11px; color: #94a3b8; display: flex; justify-content: space-between; align-items: center;';
+    orientationStatusRow.innerHTML = '<span>Live Sensor Status:</span><span id="ai-orientation-badge" style="background: #10b981; color: #fff; padding: 2px 7px; border-radius: 4px; font-weight: 700; font-size: 10px;">📱 FLAT (READY)</span>';
+
+    orientationCard.appendChild(orientationToggleRow);
+    orientationCard.appendChild(orientationStatusRow);
+    orientationSection.appendChild(orientationLabel);
+    orientationSection.appendChild(orientationCard);
 
     // 7. Save Button
     const saveBtn = document.createElement('button');
@@ -3901,9 +4257,60 @@
     personaCard.onmouseout = () => { personaCard.style.borderColor = '#1e293b'; personaCard.style.background = '#0f172a'; };
     personaCard.addEventListener('click', () => switchTab('profile'));
 
+    // 4. Phone Alignment Sensor Status Card
+    const orientationCardSummary = document.createElement('div');
+    orientationCardSummary.id = 'ai-card-orientation';
+    orientationCardSummary.style.cssText = 'background: #0f172a; border: 1px solid #1e293b; border-radius: 6px; padding: 8px 10px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.15s;';
+    orientationCardSummary.title = 'Click to open Alignment & Phone Sensor settings';
+    orientationCardSummary.onmouseover = () => { orientationCardSummary.style.borderColor = '#06b6d4'; orientationCardSummary.style.background = '#1e293b'; };
+    orientationCardSummary.onmouseout = () => { orientationCardSummary.style.borderColor = '#1e293b'; orientationCardSummary.style.background = '#0f172a'; };
+    orientationCardSummary.addEventListener('click', () => switchTab('settings'));
+
+    const orientCardLabel = document.createElement('span');
+    orientCardLabel.style.cssText = 'font-size: 11px; font-weight: 600; color: #94a3b8; display: flex; align-items: center; gap: 4px;';
+    orientCardLabel.innerHTML = '<span>📱</span> Desk Alignment Sensor';
+
+    const orientCardBadge = document.createElement('span');
+    orientCardBadge.id = 'ai-orientation-badge-solver';
+    orientCardBadge.textContent = isOrientationSensorEnabled() ? '📱 FLAT (READY)' : '⏸️ SENSOR OFF';
+    orientCardBadge.style.cssText = `background: ${isOrientationSensorEnabled() ? '#10b981' : '#475569'}; color: #fff; padding: 2px 7px; border-radius: 4px; font-weight: 700; font-size: 10px; transition: all 0.2s;`;
+
+    orientationCardSummary.appendChild(orientCardLabel);
+    orientationCardSummary.appendChild(orientCardBadge);
+
+    function updateOrientationBadge() {
+      const badge1 = document.getElementById('ai-orientation-badge');
+      const badge2 = document.getElementById('ai-orientation-badge-solver');
+      const enabled = isOrientationSensorEnabled();
+
+      let text, bg;
+      if (!enabled) {
+        text = '⏸️ SENSOR OFF';
+        bg = '#475569';
+      } else if (!isOrientationSensorActive) {
+        text = '⏳ DETECTING SENSOR...';
+        bg = '#d97706';
+      } else if (isPhoneFlat) {
+        text = `📱 FLAT (~${lastTiltAngle}° READY)`;
+        bg = '#10b981';
+      } else {
+        text = `✋ HELD (~${lastTiltAngle}° PAUSED)`;
+        bg = '#ef4444';
+      }
+
+      [badge1, badge2].forEach(b => {
+        if (b) {
+          b.textContent = text;
+          b.style.background = bg;
+        }
+      });
+    }
+    updateOrientationBadgeFn = updateOrientationBadge;
+
     summaryCards.appendChild(modelCard);
     summaryCards.appendChild(studyCard);
     summaryCards.appendChild(personaCard);
+    summaryCards.appendChild(orientationCardSummary);
 
     viewSolver.appendChild(summaryCards);
     viewSolver.appendChild(btnRow);
@@ -3950,6 +4357,7 @@
     viewSettings.appendChild(stealthSection);
     viewSettings.appendChild(pacingSection);
     viewSettings.appendChild(likertSection);
+    viewSettings.appendChild(orientationSection);
     viewSettings.appendChild(saveBtn);
 
     // View 4: Profile HUD (Autofill Persona and Details)
@@ -3958,8 +4366,40 @@
     viewProfile.style.cssText = 'display: none; flex-direction: column; gap: 10px; width: 100%; box-sizing: border-box;';
 
     const profileHeaderBar = document.createElement('div');
-    profileHeaderBar.style.cssText = 'font-size: 12px; font-weight: 700; color: #a7f3d0; display: flex; align-items: center; gap: 6px; border-bottom: 1px solid #1e293b; padding-bottom: 6px; margin-bottom: 2px; width: 100%; box-sizing: border-box;';
-    profileHeaderBar.innerHTML = '<span>👤</span> Autofill Profile & Personas';
+    profileHeaderBar.style.cssText = 'font-size: 12px; font-weight: 700; color: #a7f3d0; display: flex; align-items: center; justify-content: space-between; gap: 6px; border-bottom: 1px solid #1e293b; padding-bottom: 6px; margin-bottom: 2px; width: 100%; box-sizing: border-box;';
+
+    const profileHeaderTitle = document.createElement('span');
+    profileHeaderTitle.style.cssText = 'display: flex; align-items: center; gap: 6px;';
+    profileHeaderTitle.innerHTML = '<span>👤</span> Autofill Profile & Personas';
+
+    const profileAutofillToggleBtn = document.createElement('button');
+    profileAutofillToggleBtn.id = 'ai-profile-autofill-toggle';
+    profileAutofillToggleBtn.title = 'Toggle: when ON, identity questions (name, email, phone…) are answered instantly using your saved profile without spending any AI tokens.';
+
+    const renderProfileAutofillToggle = () => {
+      const on = isProfileAutofillEnabled();
+      profileAutofillToggleBtn.textContent = on ? '✅ Autofill: ON' : '⛔ Autofill: OFF';
+      profileAutofillToggleBtn.style.cssText = [
+        'border: none; padding: 2px 9px; border-radius: 99px; font-size: 10px; font-weight: 700; cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: background 0.15s;',
+        on
+          ? 'background: #065f46; color: #6ee7b7; border: 1px solid #10b981;'
+          : 'background: #3b1414; color: #fca5a5; border: 1px solid #ef4444;'
+      ].join('');
+    };
+    renderProfileAutofillToggle();
+
+    profileAutofillToggleBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const next = !isProfileAutofillEnabled();
+      setProfileAutofillEnabled(next);
+      renderProfileAutofillToggle();
+      setStatus(next
+        ? '👤 Profile Autofill: ON — identity questions filled instantly (0 tokens)'
+        : '⛔ Profile Autofill: OFF — all questions sent to AI');
+    });
+
+    profileHeaderBar.appendChild(profileHeaderTitle);
+    profileHeaderBar.appendChild(profileAutofillToggleBtn);
 
     profileContainer.style.display = 'flex';
     profileContainer.style.background = 'transparent';
@@ -4056,8 +4496,11 @@
       }
     }
 
-    // Load saved settings
-    keyInput.value = getSafeValue('anymodel_api_key', DEFAULT_API_KEY);
+    // Load saved settings — seed with pool key #1 if nothing was ever saved
+    if (!getSafeValue('anymodel_api_key', '').trim()) {
+      setSafeValue('anymodel_api_key', ANYMODEL_API_KEYS[0]);
+    }
+    keyInput.value = getActiveApiKey();
     urlInput.value = getSafeValue('anymodel_base_url', DEFAULT_BASE_URL);
     const savedModel = getSafeValue('anymodel_model', DEFAULT_MODEL);
     populateModels(savedModel);
@@ -4132,6 +4575,7 @@
       hudFloatingButton.style.border = curS.border;
       hudFloatingButton.style.boxShadow = curS.shadow;
       hudFloatingButton.style.opacity = curS.opacity;
+      hudFloatingButton.style.fontSize = (curS.opacity === '0' || curS.color === 'transparent') ? '0px' : '20px';
 
       setStatus(`Saved: AnyModel | ${modelVal} | 📚 Grounding: ${groundingModeVal} | 🔍 Google Search: ${webSearchVal} | ${pacingVal} pacing`);
       if (typeof updateSolverCards === 'function') {
@@ -4140,18 +4584,26 @@
     });
 
     solveBtn.addEventListener('click', () => {
+      requestOrientationPermission();
       if (!isProcessing) {
         clearAllPageErrors();
         processQuestions();
       }
     });
 
-    stopBtn.addEventListener('click', () => {
+    const handleStop = (e) => {
+      if (e) {
+        try { e.preventDefault(); e.stopPropagation(); } catch (_) {}
+      }
       shouldCancel = true;
+      isProcessing = false;
       setAutoSolvingState(false);
       cleanupProcessingState();
-      setStatus('Stopping solver... Multi-page auto-continuation cancelled.');
-    });
+      setStatus('🛑 Solver stopped immediately by user.');
+    };
+
+    stopBtn.addEventListener('click', handleStop);
+    stopBtn.addEventListener('touchend', handleStop);
 
     // Auto-Rotate on fresh page mount so the persona is already randomized for this form
     if (isAutoRotateEnabled() && !isAutoSolvingStateActive() && !getSavedMultiPagePersona()) {
@@ -4500,7 +4952,7 @@ CRITICAL GOOGLE SEARCH DIRECTIVE:
   // Single attempt caller dedicated to AnyModel (OpenAI standard) with Smart Auto-Healing Cascade
   function callGeminiAPISingle(apiKey, model, promptText, base64Images = [], maxOutputTokens = 0, isRetry = false) {
     return new Promise((resolve, reject) => {
-      const activeKey = (apiKey || getSafeValue('anymodel_api_key', DEFAULT_API_KEY)).trim();
+      const activeKey = getActiveApiKey();
       const activeModel = (model || getSafeValue('anymodel_model', DEFAULT_MODEL)).trim();
       const baseUrl = (getSafeValue('anymodel_base_url', DEFAULT_BASE_URL)).trim().replace(/\/+$/, '');
 
@@ -4515,19 +4967,30 @@ CRITICAL GOOGLE SEARCH DIRECTIVE:
       }
 
       // Smart Auto-Healing Failover for AnyModel: cascades to next verified model if one is busy/offline
+      // Also rotates the API key pool on auth/quota errors before giving up.
       const tryFallback = (errMsg) => {
         const errorStr = String(errMsg || '').toLowerCase();
 
-        // 1. If image input caused an error on a text-only model, auto-route directly to Gemini 3.7 Flash High
-        if (base64Images && base64Images.length > 0 && activeModel !== 'ag/gemini-3.7-flash-high' && !isRetry) {
-          console.warn(`[AnyModel Vision Auto-Healing] Model "${activeModel}" encountered issue with visual input (${errMsg}). Routing image question to Gemini 3.7 Flash High...`);
-          setStatus(`👁️ Auto-routing image question to Gemini 3.7 Flash High...`);
-          return callGeminiAPISingle(activeKey, 'ag/gemini-3.7-flash-high', promptText, base64Images, maxOutputTokens, true).then(resolve).catch(reject);
+        // ─ Key-level failover: rotate on auth / quota / rate-limit errors ───────────────────────
+        const isKeyError = /401|403|unauthorized|invalid.*(api.?key|token)|api.?key.*invalid|quota|rate.?limit|too many requests/i.test(errorStr);
+        if (isKeyError && ANYMODEL_API_KEYS.length > 1) {
+          const nextKey = rotateApiKey();
+          console.warn(`[AnyModel Key Rotation] Auth/quota error on key index ${(_apiKeyIndex - 1 + ANYMODEL_API_KEYS.length) % ANYMODEL_API_KEYS.length} (${errMsg}). Switching to key index ${_apiKeyIndex}.`);
+          setStatus(`🔄 API key rotated — retrying with backup key (${String(nextKey).slice(-8)}…)`);
+          // Retry immediately with the rotated key; mark as retry to avoid infinite loops
+          return callGeminiAPISingle(nextKey, activeModel, promptText, base64Images, maxOutputTokens, true).then(resolve).catch(reject);
+        }
+
+        // 1. If image input caused an error on a text-only model, auto-route directly to Gemini 3 Flash
+        if (base64Images && base64Images.length > 0 && activeModel !== 'ag/gemini-3-flash' && !isRetry) {
+          console.warn(`[AnyModel Vision Auto-Healing] Model "${activeModel}" encountered issue with visual input (${errMsg}). Routing image question to Gemini 3 Flash...`);
+          setStatus(`👁️ Auto-routing image question to Gemini 3 Flash...`);
+          return callGeminiAPISingle(activeKey, 'ag/gemini-3-flash', promptText, base64Images, maxOutputTokens, true).then(resolve).catch(reject);
         }
 
         const modelOrder = ANYMODEL_MODELS.map(m => m.id);
         const curIdx = modelOrder.indexOf(activeModel);
-        const nextModel = modelOrder.find((mId, idx) => idx > curIdx && mId !== activeModel) || (activeModel !== 'ag/gemini-3.7-flash-high' ? 'ag/gemini-3.7-flash-high' : 'am/free');
+        const nextModel = modelOrder.find((mId, idx) => idx > curIdx && mId !== activeModel) || (activeModel !== 'ag/gemini-3-flash' ? 'ag/gemini-3-flash' : 'am/free');
 
         if (nextModel && !isRetry) {
           console.warn(`[AnyModel Auto-Healing] Model "${activeModel}" issue (${errMsg}). Auto-switching to verified backup "${nextModel}"...`);
@@ -4656,6 +5119,92 @@ Key Rules:
     throw lastError || new Error('Network request failed after retries');
   }
 
+  // Live AnyModel Speed & Availability Benchmark Tester
+  async function testAvailableModels() {
+    setStatus('🔍 Benchmarking AnyModel live models & latency...');
+    const activeKey = getActiveApiKey();
+    const baseUrl = (getSafeValue('anymodel_base_url', DEFAULT_BASE_URL)).trim().replace(/\/+$/, '');
+
+    const candidateModels = [
+      { id: 'ag/gemini-3-flash', name: 'Gemini 3 Flash' },
+      { id: 'ag/gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+      { id: 'ag/gemini-3.8-flash-high', name: 'Gemini 3.8 Flash High' },
+      { id: 'cx/gpt-6-astra', name: 'GPT 6 Astra' },
+      { id: 'cx/gpt-6.1-sol', name: 'GPT 6.1 Sol' },
+      { id: 'cc/claude-sonnet-5-5', name: 'Claude Sonnet 5.5' },
+      { id: 'xai/grok-4.7', name: 'Grok 4.7' },
+      { id: 'ds/deepseek-v4-flash-vision', name: 'DeepSeek v4 Vision' },
+      { id: 'qwen/qwen3.8-27b', name: 'Qwen 3.8 27B' },
+      { id: 'am/free', name: 'AnyModel Free Router' }
+    ];
+
+    const results = [];
+    const modelSelect = document.getElementById('ai-model-select');
+
+    for (const m of candidateModels) {
+      setStatus(`Testing ${m.name} (${m.id})...`);
+      const t0 = performance.now();
+      try {
+        const res = await httpRequest({
+          method: 'POST',
+          url: `${baseUrl}/chat/completions`,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${activeKey}`
+          },
+          data: JSON.stringify({
+            model: m.id,
+            messages: [{ role: 'user', content: 'hi' }],
+            max_tokens: 3
+          }),
+          timeout: 7000
+        });
+
+        const elapsed = Math.round(performance.now() - t0);
+        let parsed = null;
+        try { parsed = JSON.parse(res.responseText || '{}'); } catch(e) {}
+
+        if (res.status === 200 && !parsed?.error) {
+          results.push({ id: m.id, ok: true, latency: elapsed });
+        } else {
+          const code = parsed?.error?.code || res.status;
+          results.push({ id: m.id, ok: false, status: code, latency: elapsed, error: parsed?.error?.message || 'Error' });
+        }
+      } catch (err) {
+        results.push({ id: m.id, ok: false, status: 'timeout', latency: 0, error: err.message });
+      }
+    }
+
+    const working = results.filter(r => r.ok).sort((a, b) => a.latency - b.latency);
+
+    // Annotate select options with latency badges
+    if (modelSelect) {
+      Array.from(modelSelect.options).forEach(opt => {
+        const found = results.find(r => r.id === opt.value);
+        if (found) {
+          const baseLabel = opt.textContent.replace(/\s*\[(🟢|🔴|🟡).*?\]\s*$/, '');
+          if (found.ok) {
+            opt.textContent = `${baseLabel} [🟢 ${found.latency}ms]`;
+          } else {
+            opt.textContent = `${baseLabel} [🔴 ${found.status || 'Offline'}]`;
+          }
+        }
+      });
+      if (working.length > 0) {
+        modelSelect.value = working[0].id;
+        setSafeValue('anymodel_model', working[0].id);
+      }
+    }
+
+    if (working.length > 0) {
+      setStatus(`✅ Model Test Finished! Fastest: ${working[0].id} (${working[0].latency}ms). Online: ${working.length}/${candidateModels.length}`);
+    } else {
+      setStatus(`⚠️ Candidate models failed test. Check AnyModel API key or rate limit.`);
+    }
+
+    return results;
+  }
+
   // Robust choice label extractor
   function getChoiceLabel(el) {
     if (!el) return '';
@@ -4707,24 +5256,62 @@ Key Rules:
     return '';
   }
 
-  // Universal click simulation
+  // Silent Smooth Scroller: centers active question block without touching styles/borders
+  function smoothScrollToQuestion(el) {
+    if (!el) return;
+    try {
+      const block = el.closest('.Qr7Oae, div[role="listitem"]') || el;
+      block.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } catch (e) {
+      try {
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const rect = el.getBoundingClientRect();
+        window.scrollTo({ top: Math.max(0, scrollTop + rect.top - 80), behavior: 'smooth' });
+      } catch (e2) {}
+    }
+  }
+
+  // Universal click simulation with mobile touch synthesis
   function dispatchUniversalClick(el) {
     if (!el) return;
     try {
-      const opts = { bubbles: true, cancelable: true, view: window };
-      el.dispatchEvent(new PointerEvent('pointerdown', opts));
-      el.dispatchEvent(new MouseEvent('mousedown', opts));
-      el.dispatchEvent(new PointerEvent('pointerup', opts));
-      el.dispatchEvent(new MouseEvent('mouseup', opts));
+      const rect = el.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const ptrOpts = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, pointerId: 1, pointerType: 'touch', isPrimary: true };
+      el.dispatchEvent(new PointerEvent('pointerdown', ptrOpts));
+
+      if (typeof Touch !== 'undefined' && typeof TouchEvent !== 'undefined') {
+        try {
+          const t = new Touch({
+            identifier: Date.now(),
+            target: el,
+            clientX: cx,
+            clientY: cy,
+            screenX: cx,
+            screenY: cy,
+            pageX: cx + (window.scrollX || window.pageXOffset || 0),
+            pageY: cy + (window.scrollY || window.pageYOffset || 0)
+          });
+          el.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true, view: window, touches: [t], targetTouches: [t], changedTouches: [t] }));
+          el.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true, view: window, touches: [], targetTouches: [], changedTouches: [t] }));
+        } catch (_) {}
+      }
+
+      el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy }));
+      el.dispatchEvent(new PointerEvent('pointerup', ptrOpts));
+      el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy }));
     } catch (e) {}
     try {
       el.click();
     } catch (e) {}
   }
 
-  // Toggles radio or checkbox to desired state
+  // Toggles radio or checkbox to desired state with high-precision event synthesis and verification
   async function safelySetToggle(element, shouldBeChecked = true) {
-    if (!element) return false;
+    if (!element || shouldCancel) return false;
+    await checkOrientationGate();
+    if (shouldCancel) return false;
 
     const isCurrentlyChecked = element.getAttribute('aria-checked') === 'true';
     if (isCurrentlyChecked === shouldBeChecked) {
@@ -4733,16 +5320,27 @@ Key Rules:
       return true;
     }
 
-    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    await sleep(120);
+    smoothScrollToQuestion(element);
+    await sleep(100);
 
     const clickTarget = element.closest('label, .docssharedWizToggleLabeledContainer') || element;
     dispatchUniversalClick(clickTarget);
-    await sleep(150);
+    await sleep(120);
 
     if ((element.getAttribute('aria-checked') === 'true') !== shouldBeChecked) {
       dispatchUniversalClick(element);
-      await sleep(150);
+      await sleep(120);
+    }
+
+    // Native hidden radio/checkbox input sync if wrapped in Google Forms container
+    if ((element.getAttribute('aria-checked') === 'true') !== shouldBeChecked) {
+      const nativeInput = element.querySelector('input[type="radio"], input[type="checkbox"]') ||
+                          element.closest('label, .docssharedWizToggleLabeledContainer')?.querySelector('input[type="radio"], input[type="checkbox"]');
+      if (nativeInput) {
+        nativeInput.checked = shouldBeChecked;
+        nativeInput.dispatchEvent(new Event('change', { bubbles: true }));
+        nativeInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
     }
 
     const success = (element.getAttribute('aria-checked') === 'true') === shouldBeChecked;
@@ -4753,15 +5351,17 @@ Key Rules:
 
   // Sets text input or textarea with full browser editing command, native setter, and MDC floating-label lift
   async function setInputField(inputEl, val) {
-    if (!inputEl) return false;
+    if (!inputEl || shouldCancel) return false;
+    await checkOrientationGate();
+    if (shouldCancel) return false;
     try {
       inputEl.removeAttribute('disabled');
       inputEl.removeAttribute('aria-disabled');
       inputEl.disabled = false;
     } catch (e) {}
 
-    inputEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    await sleep(100);
+    smoothScrollToQuestion(inputEl);
+    await sleep(90);
 
     try {
       dispatchUniversalClick(inputEl);
@@ -4788,6 +5388,7 @@ Key Rules:
       let charIdx = 0;
       while (charIdx < strVal.length) {
         if (shouldCancel) return false;
+        await checkOrientationGate();
         const burstSize = Math.min(strVal.length - charIdx, Math.floor(Math.random() * 3) + 1);
         const chunk = strVal.slice(charIdx, charIdx + burstSize);
         charIdx += burstSize;
@@ -4808,7 +5409,7 @@ Key Rules:
         } else if (lastCh === ' ') {
           jitter += 25 + Math.random() * 30;
         }
-        await sleep(Math.floor(jitter));
+        await pausableSleep(Math.floor(jitter));
       }
     } else {
       // Fast / short string: instant replacement
@@ -4861,12 +5462,12 @@ Key Rules:
   }
 
   async function ensureQuestionReady(block) {
-    block.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    await sleep(200);
+    smoothScrollToQuestion(block);
+    await sleep(180);
 
     const readyTarget = block.querySelector('div[role="radio"], div[role="checkbox"], div[role="listbox"], input, textarea, div[role="row"]');
     if (!readyTarget) {
-      await sleep(200);
+      await sleep(180);
     }
   }
 
@@ -4927,14 +5528,15 @@ Key Rules:
     return { title, description, fullText };
   }
 
+  // Enhanced vision & image extractor: extracts question and choice images with srcset and base64 compression
   async function extractImages(block) {
     const images = [];
-    const mainImgs = block.querySelectorAll('img');
+    const mainImgs = block.querySelectorAll('img, picture img, [role="img"] img, .kHssdc');
     for (const img of mainImgs) {
-      const src = img.src || img.getAttribute('data-src') || img.getAttribute('data-lazy-src') || '';
+      const src = img.currentSrc || img.src || img.getAttribute('data-src') || img.getAttribute('data-lazy-src') || (img.getAttribute('srcset') ? img.getAttribute('srcset').split(',')[0].split(' ')[0] : '') || '';
       if (!src || src.startsWith('data:image/svg')) continue;
       if (src.includes('googleusercontent.com/a/') || src.includes('accounts.google.com')) continue;
-      if (img.width > 0 && img.width < 32 && img.height > 0 && img.height < 32) continue;
+      if (img.width > 0 && img.width < 28 && img.height > 0 && img.height < 28) continue;
 
       const b64 = await getBase64FromImageUrl(src);
       if (b64) images.push(b64);
@@ -5621,7 +6223,6 @@ Respond with JSON: {"reasoning": "<step-by-step reasoning identifying the single
   // Safely restores HUD action buttons after multi-page execution completes or is cancelled
   function cleanupProcessingState() {
     isProcessing = false;
-    shouldCancel = false;
     setAutoSolvingState(false);
     const solveBtn = document.getElementById('ai-solve-btn');
     const stopBtn = document.getElementById('ai-stop-btn');
@@ -5674,8 +6275,12 @@ Respond with JSON: {"reasoning": "<step-by-step reasoning identifying the single
     const pacing = getPacingConfig();
     const biasMode = getLikertBiasMode();
 
-    // Smooth scroll to current question block
-    block.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Check phone alignment / flat desk sensor before proceeding
+    await checkOrientationGate();
+    if (shouldCancel) return false;
+
+    // Smooth scroll to current question block with visual focus highlight
+    smoothScrollToQuestion(block);
     await ensureQuestionReady(block);
 
     const qInfo = getQuestionInfo(block);
@@ -5697,35 +6302,39 @@ Respond with JSON: {"reasoning": "<step-by-step reasoning identifying the single
 
     const images = await extractImages(block);
 
-    // 0. ZERO-TOKEN PROFILE FALLBACK
+    // 0. ZERO-TOKEN PROFILE FALLBACK (only when Profile Autofill is enabled)
     const currentProfile = getUserProfile();
-    let matchedProfile = matchUserProfile(qInfo.title, qInfo.description, currentProfile);
+    let matchedProfile = null;
 
-    if (!matchedProfile) {
-      const preliminaryRadios = block.querySelectorAll('div[role="radio"]');
-      const preliminaryBoxes = block.querySelectorAll('div[role="checkbox"]');
-      let choiceLabels = [];
-      if (preliminaryRadios.length > 0) {
-        choiceLabels = Array.from(preliminaryRadios).map(r => getChoiceLabel(r));
-      } else if (preliminaryBoxes.length > 0) {
-        choiceLabels = Array.from(preliminaryBoxes).map(c => getChoiceLabel(c));
-      }
-      if (choiceLabels.length > 0) {
-        const detectedField = detectFieldFromOptions(choiceLabels);
-        if (detectedField && currentProfile[detectedField]) {
-          matchedProfile = { field: detectedField, value: currentProfile[detectedField] };
+    if (isProfileAutofillEnabled()) {
+      matchedProfile = matchUserProfile(qInfo.title, qInfo.description, currentProfile);
+
+      if (!matchedProfile) {
+        const preliminaryRadios = block.querySelectorAll('div[role="radio"]');
+        const preliminaryBoxes = block.querySelectorAll('div[role="checkbox"]');
+        let choiceLabels = [];
+        if (preliminaryRadios.length > 0) {
+          choiceLabels = Array.from(preliminaryRadios).map(r => getChoiceLabel(r));
+        } else if (preliminaryBoxes.length > 0) {
+          choiceLabels = Array.from(preliminaryBoxes).map(c => getChoiceLabel(c));
+        }
+        if (choiceLabels.length > 0) {
+          const detectedField = detectFieldFromOptions(choiceLabels);
+          if (detectedField && currentProfile[detectedField]) {
+            matchedProfile = { field: detectedField, value: currentProfile[detectedField] };
+          }
         }
       }
-    }
 
-    if (matchedProfile && matchedProfile.value) {
-      setStatus(`[${i + 1}/${total}] 👤 Detected "${matchedProfile.field}" - using local profile (0 tokens)...`);
-      const filled = await applyProfileFallback(block, matchedProfile, qInfo);
-      if (filled && isQuestionAlreadyAnswered(block)) {
-        markQuestionSolved(block);
-        setStatus(`[${i + 1}/${total}] ✓ Autofilled ${matchedProfile.field}: "${matchedProfile.value}" (0 tokens)`);
-        await sleep(STEP_DELAY_MS);
-        return true;
+      if (matchedProfile && matchedProfile.value) {
+        setStatus(`[${i + 1}/${total}] 👤 Detected "${matchedProfile.field}" - using local profile (0 tokens)...`);
+        const filled = await applyProfileFallback(block, matchedProfile, qInfo);
+        if (filled && isQuestionAlreadyAnswered(block)) {
+          markQuestionSolved(block);
+          setStatus(`[${i + 1}/${total}] ✓ Autofilled ${matchedProfile.field}: "${matchedProfile.value}" (0 tokens)`);
+          await sleep(STEP_DELAY_MS);
+          return true;
+        }
       }
     }
 
@@ -6300,11 +6909,13 @@ Respond ONLY with valid JSON:
         }
 
         const block = questionBlocks[i];
+        await checkOrientationGate();
+        if (shouldCancel) break;
         await solveSingleQuestionBlock(block, i, questionBlocks.length, apiKey, model, prov, false);
 
         const pacing = getPacingConfig();
         const stepDelay = Math.floor(pacing.stepMin + Math.random() * (pacing.stepMax - pacing.stepMin));
-        await sleep(stepDelay);
+        await pausableSleep(stepDelay);
       } // end questionBlocks loop
 
       if (shouldCancel) {
@@ -6313,33 +6924,9 @@ Respond ONLY with valid JSON:
         return;
       }
 
-      // ----------------------------------------------------
-      // MANDATORY VERIFICATION PASS: Ensure 100% of questions are answered!
-      // ----------------------------------------------------
       clearAllPageErrors();
-      let unanswered = getCleanQuestionBlocks().filter(b => !isQuestionAlreadyAnswered(b));
-      let verifyPass = 0;
-      const MAX_VERIFY_PASSES = 3;
-
-      while (unanswered.length > 0 && verifyPass < MAX_VERIFY_PASSES && !shouldCancel) {
-        verifyPass++;
-        setStatus(`[Verification Pass ${verifyPass}] Checking questions... ${unanswered.length} unanswered question(s) remaining. Solving now...`);
-        for (let u = 0; u < unanswered.length; u++) {
-          if (shouldCancel) break;
-          const uBlock = unanswered[u];
-          await solveSingleQuestionBlock(uBlock, u, unanswered.length, apiKey, model, prov, true);
-          await sleep(250);
-        }
-        clearAllPageErrors();
-        unanswered = getCleanQuestionBlocks().filter(b => !isQuestionAlreadyAnswered(b));
-      }
-
-      if (unanswered.length > 0) {
-        setStatus(`⚠️ Note: ${unanswered.length} question(s) require manual input (e.g. file upload).`);
-      } else {
-        setStatus(`✓ Verification complete: 100% of questions on this page are completely answered!`);
-      }
-      await sleep(350);
+      setStatus(`✓ Finished solving questions on this section.`);
+      await sleep(200);
 
       if (shouldCancel) {
         setStatus('Processing stopped by user.');
@@ -6447,6 +7034,7 @@ Respond ONLY with valid JSON:
   function mountHUD() {
     try {
       createHUD();
+      initOrientationSensor();
     } catch (err) {
       console.error('[Google Form AI HUD] Mount error:', err);
     }

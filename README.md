@@ -1,13 +1,13 @@
 # Google Forms Universal AI Assistant HUD
 
-[![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](https://github.com/)
+[![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)](https://github.com/REP-Julian/Google-Forms-Universal-AI-Assistant)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-success.svg)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![Local RAG](https://img.shields.io/badge/Knowledge%20RAG-DOCX%20%7C%20PDF%20%7C%20PPTX-orange.svg)](#document-knowledge-grounding-local-rag)
 [![Privacy](https://img.shields.io/badge/Privacy-100%25%20Client--Side-brightgreen.svg)](#privacy-security-and-storage)
 [![Zero API Keys](https://img.shields.io/badge/Security-Zero%20Hardcoded%20Keys-blueviolet.svg)](#privacy-security-and-storage)
 
-An autonomous, client-side browser extension built on Manifest V3 specifically for Google Forms. The assistant parses, analyzes, and answers all 12 native Google Form question structures using multimodal vision and frontier language models, featuring **local document knowledge grounding (RAG for DOCX, PDF, and PPT/PPTX)**, live Google Web Search integration, human-paced input simulation, and demographic persona generation.
+An autonomous, client-side browser extension built on Manifest V3 specifically for Google Forms. The assistant parses, analyzes, and answers all 12 native Google Form question structures using multimodal vision and frontier language models, featuring **local document knowledge grounding (RAG for DOCX, PDF, and PPT/PPTX)**, live Google Web Search integration, human-paced input simulation, demographic persona generation, **real-time hardware device orientation auto-pause/resume**, and **zero-trace stealth ghost mode**.
 
 The extension contains **zero hardcoded API keys**, making it completely safe to clone, fork, and push to public GitHub repositories. Users supply their personal API credentials via the HUD settings panel, which are saved strictly to private local browser storage.
 

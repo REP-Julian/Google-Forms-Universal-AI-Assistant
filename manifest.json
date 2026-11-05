@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Google Forms Universal AI Assistant HUD",
-  "version": "1.2.0",
-  "description": "Full Google Forms AI Solver Patch 1.2.0 supporting DOCX, PDF, and PPT/PPTX document knowledge folder reading, multi-provider AI, and anti-detection.",
+  "version": "1.3.0",
+  "description": "Full Google Forms AI Solver Patch 1.3.0 supporting DOCX, PDF, and PPT/PPTX document knowledge folder reading, multi-provider AI, orientation sensor automation, and zero-trace stealth ghost mode.",
   "permissions": [
     "storage",
     "unlimitedStorage"
