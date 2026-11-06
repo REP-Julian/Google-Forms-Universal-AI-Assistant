@@ -120,9 +120,9 @@
   };
 
   const WEB_SEARCH_MODES = [
-    { id: 'auto', label: '🌐 Auto (Live Google Search on Quizzes - Recommended)' },
-    { id: 'always', label: '⚡ Always Google Search (All Questions)' },
-    { id: 'off', label: '🚫 Off (Pure AnyModel Reasoning)' }
+    { id: 'off', label: '🚫 Off (Pure AnyModel - Low Latency & Minimal Data - Default)' },
+    { id: 'auto', label: '🌐 Auto (Live Google Search on Quizzes)' },
+    { id: 'always', label: '⚡ Always Google Search (All Questions)' }
   ];
 
   const TOKEN_MODES = [
@@ -4505,8 +4505,8 @@
     const savedModel = getSafeValue('anymodel_model', DEFAULT_MODEL);
     populateModels(savedModel);
 
-    const savedWebSearch = getSafeValue('web_search_mode', 'auto');
-    webSearchSelect.value = WEB_SEARCH_MODES.some(w => w.id === savedWebSearch) ? savedWebSearch : 'auto';
+    const savedWebSearch = getSafeValue('web_search_mode', 'off');
+    webSearchSelect.value = WEB_SEARCH_MODES.some(w => w.id === savedWebSearch) ? savedWebSearch : 'off';
 
     const savedTokenBudget = getSafeValue('token_budget', '0');
     if (savedTokenBudget !== null && TOKEN_MODES.some(t => String(t.maxTokens) === String(savedTokenBudget))) {
@@ -4806,7 +4806,7 @@
   // Live Google Search Grounding Engine: queries Google Search directly for real-time ground truth
   async function fetchGoogleSearchEvidence(questionTitle, questionFullText, choiceLabels = []) {
     try {
-      const searchMode = getSafeValue('web_search_mode', 'auto');
+      const searchMode = getSafeValue('web_search_mode', 'off');
       if (searchMode === 'off') return null;
 
       // If choices look like subjective Likert scale (Agree/Disagree) and mode is auto, skip web search
