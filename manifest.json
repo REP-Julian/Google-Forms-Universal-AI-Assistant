@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Google Forms Universal AI Assistant HUD",
-  "version": "1.4.0",
-  "description": "Full Google Forms AI Solver Patch 1.4.0 with Anti-Proctor Visibility Shield, Face-Down Panic Screen Wipe, IndexedDB Local Answer Cache, Countdown Timer Watchdog, and Weak-Signal Carrier Resilience.",
+  "version": "1.5.0",
+  "description": "Full Google Forms AI Solver Patch 1.5.0 with Zero Auto-Scroll Manual Viewport Mode (Follow Thumb), Anti-Proctor Visibility Shield, Face-Down Panic Screen Wipe, and IndexedDB Local Answer Cache.",
   "permissions": [
     "storage",
     "unlimitedStorage"

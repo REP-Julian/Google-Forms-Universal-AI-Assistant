@@ -1,6 +1,6 @@
 # Google Forms Universal AI Assistant HUD
 
-[![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)](https://github.com/REP-Julian/Google-Forms-Universal-AI-Assistant)
+[![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)](https://github.com/REP-Julian/Google-Forms-Universal-AI-Assistant)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-success.svg)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![Local RAG](https://img.shields.io/badge/Knowledge%20RAG-DOCX%20%7C%20PDF%20%7C%20PPTX-orange.svg)](#document-knowledge-grounding-local-rag)
@@ -256,6 +256,11 @@ Designed for supervised classroom exams, proctored forms, and low-connectivity m
 
 5. **Weak-Signal Carrier Resilience:**
    - Lightweight 2-second fast reachability probe catches dead carrier sockets (typical on Smart/DITO suburban SIMs) before waiting 45s on network hangs.
+
+6. **Zero Auto-Scroll Manual Viewport Mode (Follow Thumb):**
+   - **Zero Ghost-Scrolling:** The viewport remains 100% steady and never scrolls programmatically by itself.
+   - **Natural Thumb Follow:** The solver detects which question card is currently visible on screen. It answers the visible question, then politely waits for you to scroll down to the next question with your thumb.
+   - Anyone looking over will see natural manual thumb scrolling without robotic screen jumping. Toggle between *Manual Scroll (Wait for Thumb)*, *Silent No-Scroll*, or *Auto-Scroll* in settings.
 
 ---
 

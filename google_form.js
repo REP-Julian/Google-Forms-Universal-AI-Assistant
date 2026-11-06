@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Google Forms Universal AI Assistant HUD
 // @namespace    https://tampermonkey.net/
-// @version      1.4.0
-// @description  Google Forms AI Solver Patch 1.4.0 with Anti-Proctor Visibility Shield, Face-Down Panic Screen Wipe, IndexedDB Local Answer Cache, Countdown Timer Watchdog, and Weak-Signal Carrier Resilience.
+// @version      1.5.0
+// @description  Google Forms AI Solver Patch 1.5.0 with Zero Auto-Scroll Manual Viewport Mode (Follow Thumb), Anti-Proctor Visibility Shield, Face-Down Panic Wipe, and IndexedDB Answer Cache.
 // @author       Assistant
 // @match        *://docs.google.com/forms/*
 // @match        https://docs.google.com/forms/*
@@ -78,7 +78,7 @@
     }
   })();
 
-  console.log('%c[Google Form AI HUD v1.4.0]%c Next Level Document RAG, Anti-Proctor Shield, Face-Down Panic & Answer Cache active! (Alt+H or F2 to toggle, or click ⚡ button)',
+  console.log('%c[Google Form AI HUD v1.5.0]%c Zero Auto-Scroll Manual Viewport Mode (Follow Thumb) & Anti-Proctor Shield active! (Alt+H or F2 to toggle, or click ⚡ button)',
     'background: #2563eb; color: #ffffff; padding: 3px 8px; border-radius: 4px; font-weight: bold;',
     'color: #38bdf8; font-weight: bold;'
   );
@@ -184,6 +184,33 @@
     { id: 'fast', label: '⚡ Fast (Instant Input)', readMin: 40, readMax: 80, typeMin: 0, typeMax: 0, stepMin: 120, stepMax: 200 },
     { id: 'stealth', label: '🐢 Ultra Stealth (Slow & Deliberate)', readMin: 800, readMax: 1600, typeMin: 35, typeMax: 70, stepMin: 800, stepMax: 1500 }
   ];
+
+  // Scroll and automation modes for classroom stealth (zero screen movement)
+  const SCROLL_MODES = [
+    { id: 'manual_viewport', label: '👆 Manual Scroll (Wait for Thumb - 0 Auto-Scroll - Recommended)' },
+    { id: 'silent_background', label: '🤫 Silent No-Scroll (Solve in Background - 0 Screen Move)' },
+    { id: 'auto_scroll', label: '📜 Auto-Scroll (Centers screen automatically)' }
+  ];
+
+  function getScrollMode() {
+    return getSafeValue('scroll_mode', 'manual_viewport');
+  }
+
+  function isAutoScrollEnabled() {
+    return getScrollMode() === 'auto_scroll';
+  }
+
+  function isManualViewportFollowEnabled() {
+    return getScrollMode() === 'manual_viewport';
+  }
+
+  function isElementInViewport(el) {
+    if (!el || el.offsetParent === null) return false;
+    const rect = el.getBoundingClientRect();
+    const vh = window.innerHeight || document.documentElement.clientHeight || 800;
+    // Considered in view if top is above bottom of screen and bottom is below top of screen
+    return rect.top < vh - 40 && rect.bottom > 40;
+  }
 
   // Likert scale / Rating sentiment bias profiles for authentic statistical distributions
   const LIKERT_BIAS_MODES = [
@@ -2626,8 +2653,10 @@
     await checkOrientationGate();
     if (shouldCancel) return false;
     try {
-      optionEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      await sleep(100);
+      if (isAutoScrollEnabled()) {
+        optionEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        await sleep(100);
+      }
       if (typeof optionEl.focus === 'function') optionEl.focus();
 
       const eventOpts = { bubbles: true, cancelable: true, view: window };
@@ -3530,6 +3559,26 @@
 
     pacingSection.appendChild(pacingLabel);
     pacingSection.appendChild(pacingSelect);
+
+    // 6b2. Scroll & Viewport Mode (Classroom Stealth - Zero Screen Movement)
+    const scrollSection = document.createElement('div');
+    const scrollLabel = document.createElement('div');
+    scrollLabel.textContent = '📜 Scroll & Viewport Mode (Classroom Stealth)';
+    scrollLabel.style.cssText = 'font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #38bdf8; font-weight: 600; margin-bottom: 2px;';
+
+    const scrollSelect = document.createElement('select');
+    scrollSelect.id = 'ai-scroll-select';
+    scrollSelect.style.cssText = 'background: #1e293b; border: 1.5px solid #0284c7; color: #f8fafc; padding: 8px 10px; border-radius: 6px; width: 100%; box-sizing: border-box; font-size: 13px; outline: none; font-weight: 600; cursor: pointer;';
+
+    SCROLL_MODES.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = s.label;
+      scrollSelect.appendChild(opt);
+    });
+
+    scrollSection.appendChild(scrollLabel);
+    scrollSection.appendChild(scrollSelect);
 
     // 6c. Likert / Rating Sentiment Bias
     const likertSection = document.createElement('div');
@@ -4518,6 +4567,7 @@
     viewSettings.appendChild(tokenSection);
     viewSettings.appendChild(stealthSection);
     viewSettings.appendChild(pacingSection);
+    viewSettings.appendChild(scrollSection);
     viewSettings.appendChild(likertSection);
     viewSettings.appendChild(orientationSection);
 
@@ -4729,6 +4779,9 @@
     const savedPacing = getSafeValue('pacing_mode', 'humanized');
     pacingSelect.value = PACING_MODES.some(p => p.id === savedPacing) ? savedPacing : 'humanized';
 
+    const savedScrollMode = getSafeValue('scroll_mode', 'manual_viewport');
+    scrollSelect.value = SCROLL_MODES.some(s => s.id === savedScrollMode) ? savedScrollMode : 'manual_viewport';
+
     const savedLikert = getSafeValue('likert_bias_mode', 'positive');
     likertSelect.value = LIKERT_BIAS_MODES.some(b => b.id === savedLikert) ? savedLikert : 'positive';
 
@@ -4758,6 +4811,7 @@
       const stealthVal = stealthSelect.value;
       const tokenVal = tokenSelect.value;
       const pacingVal = pacingSelect.value;
+      const scrollVal = scrollSelect.value;
       const likertVal = likertSelect.value;
       const groundingModeVal = modeSelect.value;
 
@@ -4769,6 +4823,7 @@
       setSafeValue('token_budget', tokenVal);
       setSafeValue('hud_stealth_level', stealthVal);
       setSafeValue('pacing_mode', pacingVal);
+      setSafeValue('scroll_mode', scrollVal);
       setSafeValue('likert_bias_mode', likertVal);
       setSafeValue('grounding_mode', groundingModeVal);
 
@@ -5606,9 +5661,9 @@ Key Rules:
     return '';
   }
 
-  // Silent Smooth Scroller: centers active question block without touching styles/borders
+  // Silent Smooth Scroller: centers active question block without touching styles/borders (only when auto-scroll is enabled)
   function smoothScrollToQuestion(el) {
-    if (!el) return;
+    if (!el || !isAutoScrollEnabled()) return;
     try {
       const block = el.closest('.Qr7Oae, div[role="listitem"]') || el;
       block.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -6027,8 +6082,10 @@ Key Rules:
     const trigger = block.querySelector('div[role="listbox"]');
     if (!trigger) return false;
 
-    trigger.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    await sleep(150);
+    if (isAutoScrollEnabled()) {
+      trigger.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      await sleep(150);
+    }
     dispatchUniversalClick(trigger);
 
     await waitForElement('div[role="option"]', document, 2000);
@@ -6222,8 +6279,10 @@ Respond with JSON: {"reasoning": "<step-by-step reasoning identifying the single
     }
 
     if (dropdownBox) {
-      dropdownBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      await sleep(150);
+      if (isAutoScrollEnabled()) {
+        dropdownBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        await sleep(150);
+      }
       dispatchUniversalClick(dropdownBox);
       await waitForElement('div[role="option"]', document, 1500);
       await sleep(200);
@@ -6629,7 +6688,19 @@ Respond with JSON: {"reasoning": "<step-by-step reasoning identifying the single
     await checkOrientationGate();
     if (shouldCancel) return false;
 
-    // Smooth scroll to current question block with visual focus highlight
+    // In Manual Viewport mode: wait until user scrolls question into view with their thumb (0 auto-scroll)
+    if (isManualViewportFollowEnabled() && !isRetry) {
+      if (!isElementInViewport(block)) {
+        setStatus(`[${i + 1}/${total}] 👆 Scroll down to question ${i + 1} to answer...`);
+        while (!isElementInViewport(block) && !shouldCancel) {
+          await checkOrientationGate();
+          await sleep(150);
+        }
+        if (shouldCancel) return false;
+      }
+    }
+
+    // Smooth scroll to current question block (only if auto-scroll is enabled)
     smoothScrollToQuestion(block);
     await ensureQuestionReady(block);
 
@@ -7212,7 +7283,7 @@ Respond ONLY with valid JSON:
         const p = getUserProfile(true);
         currentSessionPersona = null;
         setStatus(`🏁 All questions answered as "${p.fullName}"! Reached the Submit button — ready for you to review and manually submit.`);
-        if (typeof navEarly.submitBtn.scrollIntoView === 'function') {
+        if (isAutoScrollEnabled() && typeof navEarly.submitBtn.scrollIntoView === 'function') {
           navEarly.submitBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
         cleanupProcessingState();
@@ -7220,8 +7291,10 @@ Respond ONLY with valid JSON:
       }
       if (navEarly.nextBtn) {
         clearAllPageErrors();
-        navEarly.nextBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        await sleep(350);
+        if (isAutoScrollEnabled()) {
+          navEarly.nextBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          await sleep(350);
+        }
         setStatus('Advancing past informational section...');
         dispatchUniversalClick(navEarly.nextBtn);
         const transition = await waitForNextPageReady(12000);
@@ -7289,8 +7362,10 @@ Respond ONLY with valid JSON:
       // Case A: Next button present -> Click Next and continue solving until Submit is reached!
       if (nav.nextBtn) {
         clearAllPageErrors();
-        nav.nextBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        await sleep(250);
+        if (isAutoScrollEnabled()) {
+          nav.nextBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          await sleep(250);
+        }
 
         setAutoSolvingState(true, currentSessionPersona || getUserProfile(true));
         setStatus(`[Multi-Page Auto-Advance] All questions answered on this section. Clicking Next to continue solving next page...`);
@@ -7341,7 +7416,7 @@ Respond ONLY with valid JSON:
           const p = getUserProfile(true);
           currentSessionPersona = null;
           setStatus(`🏁 All questions on all pages 100% answered as "${p.fullName}"! Reached the Submit button — ready for you to review and manually submit.`);
-          if (typeof lateNav.submitBtn.scrollIntoView === 'function') {
+          if (isAutoScrollEnabled() && typeof lateNav.submitBtn.scrollIntoView === 'function') {
             lateNav.submitBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }
           cleanupProcessingState();
@@ -7359,7 +7434,7 @@ Respond ONLY with valid JSON:
         const p = getUserProfile(true);
         currentSessionPersona = null; // Session completed! Next form run will automatically rotate
         setStatus(`🏁 All questions on all pages 100% answered as "${p.fullName}"! Reached the Submit button — ready for you to review and manually submit.`);
-        if (typeof nav.submitBtn.scrollIntoView === 'function') {
+        if (isAutoScrollEnabled() && typeof nav.submitBtn.scrollIntoView === 'function') {
           nav.submitBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
         cleanupProcessingState();
@@ -7512,7 +7587,7 @@ Respond ONLY with valid JSON:
       const persona = p || getUserProfile(true);
       currentSessionPersona = null;
       setStatus(`🏁 Reached the final Submit button as "${persona.fullName}"! Waiting for you to review and manually submit.`);
-      if (typeof nav.submitBtn.scrollIntoView === 'function') {
+      if (isAutoScrollEnabled() && typeof nav.submitBtn.scrollIntoView === 'function') {
         nav.submitBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
       cleanupProcessingState();
