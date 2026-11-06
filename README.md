@@ -1,13 +1,14 @@
 # Google Forms Universal AI Assistant HUD
 
-[![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)](https://github.com/REP-Julian/Google-Forms-Universal-AI-Assistant)
+[![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)](https://github.com/REP-Julian/Google-Forms-Universal-AI-Assistant)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-success.svg)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![Local RAG](https://img.shields.io/badge/Knowledge%20RAG-DOCX%20%7C%20PDF%20%7C%20PPTX-orange.svg)](#document-knowledge-grounding-local-rag)
+[![Anti-Proctor](https://img.shields.io/badge/Stealth-Anti--Proctor%20%26%20Panic%20Wipe-success.svg)](#anti-proctor-and-exam-stealth-defense)
 [![Privacy](https://img.shields.io/badge/Privacy-100%25%20Client--Side-brightgreen.svg)](#privacy-security-and-storage)
 [![Zero API Keys](https://img.shields.io/badge/Security-Zero%20Hardcoded%20Keys-blueviolet.svg)](#privacy-security-and-storage)
 
-An autonomous, client-side browser extension built on Manifest V3 specifically for Google Forms. The assistant parses, analyzes, and answers all 12 native Google Form question structures using multimodal vision and frontier language models, featuring **local document knowledge grounding (RAG for DOCX, PDF, and PPT/PPTX)**, live Google Web Search integration, human-paced input simulation, demographic persona generation, **real-time hardware device orientation auto-pause/resume**, and **zero-trace stealth ghost mode**.
+An autonomous, client-side browser extension built on Manifest V3 specifically for Google Forms. The assistant parses, analyzes, and answers all 12 native Google Form question structures using multimodal vision and frontier language models, featuring **local document knowledge grounding (RAG for DOCX, PDF, and PPT/PPTX)**, **Anti-Proctor Visibility & Focus-Loss Shield**, **Face-Down Physical Panic Screen Wipe**, **IndexedDB Local Answer Caching**, **Countdown Timer Watchdog**, **hardware orientation alignment automation**, and **zero-trace stealth ghost mode**.
 
 The extension contains **zero hardcoded API keys**, making it completely safe to clone, fork, and push to public GitHub repositories. Users supply their personal API credentials via the HUD settings panel, which are saved strictly to private local browser storage.
 
@@ -225,7 +226,36 @@ Automated submission scripts that fill fields instantaneously can trigger platfo
 | `Alt + H` | Toggle HUD visibility between Expanded Panel and Minimized Trigger |
 | `F2` | Alternate hotkey to toggle HUD visibility |
 | `Alt + B` | **Boss / Blind Mode:** Immediately forces total transparency (0.005 opacity) |
+| `Alt + P` / `F9` | **Panic Screen Wipe:** Instantly hides HUD completely and aborts active solver |
 | `Escape` | **Panic Conceal:** Closes active modal overlays and returns HUD to minimized state |
+| **Physical Flip** | **Face-Down Panic:** Flipping phone screen-down instantly wipes HUD and stops solving |
+| **Triple-Tap** | **Touch Gesture:** Tap screen 3 times rapidly to unhide from Panic Wipe or trigger panic |
+
+---
+
+## Anti-Proctor & Exam Stealth Defense
+
+Designed for supervised classroom exams, proctored forms, and low-connectivity mobile networks:
+
+1. **Anti-Proctor Visibility & Focus-Loss Shield:**
+   - Overrides `document.hidden = false` and `document.visibilityState = 'visible'`.
+   - Intercepts and neutralizes `visibilitychange`, `blur`, and `focusout` event listeners. Google Forms, Canvas, Quilgo, and proctoring scripts cannot detect when you switch tabs, split screen, or minimize the browser.
+
+2. **Physical Face-Down Panic Screen Wipe:**
+   - Leverages physical accelerometer and gravity vectors ($Z < -6.0\text{ m/s}^2$).
+   - Flipping your phone screen-down on a desk instantly purges the HUD and button from the display and aborts active solving loops within milliseconds.
+   - Returning face-up and triple-tapping the screen restores the HUD cleanly.
+
+3. **IndexedDB Local Quiz Answer Cache:**
+   - Automatically hashes question prompts and choices into IndexedDB (`FormAI_QuizCache_v1`).
+   - Retaking a quiz or reloading a page provides instant 0 ms answer recall with 0 cellular tokens and 0 network bandwidth consumed.
+
+4. **Countdown Timer Watchdog & Adaptive Turbo Pacing:**
+   - Continuously monitors native and third-party countdown timers (Quilgo, Form Presenter, timed forms).
+   - If time remaining drops below 3 minutes, the solver automatically shifts into Emergency Turbo mode to finish the exam before the clock expires.
+
+5. **Weak-Signal Carrier Resilience:**
+   - Lightweight 2-second fast reachability probe catches dead carrier sockets (typical on Smart/DITO suburban SIMs) before waiting 45s on network hangs.
 
 ---
 
